@@ -40,18 +40,19 @@
 !! The Millepede method and the initial implementation has been
 !! developed by [V. Blobel](http://www.desy.de/~blobel) from he University of Hamburg.
 !! Meanwhile the code is maintained at DESY by the statistics tools group of the
-!! analysis center of the Helmholtz Terascale alliance
-!! ([www.terascale.de](https://www.wiki.terascale.de/index.php/Millepede_II)).
+!! analysis center of the Helmholtz [Terascale](https://terascale.de) alliance
+!! using [GitLab](https://about.gitlab.com) ([code and wiki](https://gitlab.desy.de)).
 !!
 !! The Millepede II software is provided by DESY under the terms of the
 !! [LGPLv2 license](http://www.gnu.org/licenses/old-licenses/lgpl-2.0-standalone.html).
 !!
 !! \section install_sec Installation
 !! To install **Millepede** (on a linux system):
-!! 1. Download the software package from the DESY \c svn server to
-!!    \a target directory, e.g.:
+!! 1. Download the software package from the DESY \c gitlab server to
+!!    \a target directory, e.g. (shallow clone):
 !!
-!!         svn checkout http://svnsrv.desy.de/public/MillepedeII/tags/V04-10-01 target
+!!         git clone --depth 1 --branch V04-11-00 \
+!!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
 !!
@@ -138,6 +139,7 @@
 !! * 211008: Fortran code modernized (EQUIVALENCE and ENTRY statements replaced) and checked
 !!   (compiling with '-fcheck=all').
 !! * 211022: Fortran code modernized further (assumed-size array arguments replaced).
+!! * 211101: Migration from DESY \c svn to \c gitlab server (includes wiki).
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -700,7 +702,7 @@ PROGRAM mptwo
     CALL mvopen(lunlog,'millepede.log')
     CALL getenv('HOSTNAME',chost)
     IF (chost(1:1) == ' ') CALL getenv('HOST',chost)
-    WRITE(*,*) '($Rev$)'
+    WRITE(*,*) '($Id$)'
     iopnmp=0
     !$    iopnmp=1
     !$    WRITE(*,*) 'using OpenMP (TM)'
@@ -720,7 +722,7 @@ PROGRAM mptwo
     WRITE(*,*) '                                 ',chost
     WRITE(*,*) ' '
 
-    WRITE(8,*) '($Rev$)'
+    WRITE(8,*) '($Id$)'
     WRITE(8,*) ' '
     WRITE(8,*) 'Log-file Millepede II-P                        ', chdate
     WRITE(8,*) '                                               ', chost
