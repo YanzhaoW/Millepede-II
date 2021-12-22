@@ -51,7 +51,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-11-00 \
+!!         git clone --depth 1 --branch V04-11-01 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -140,6 +140,14 @@
 !!   (compiling with '-fcheck=all').
 !! * 211022: Fortran code modernized further (assumed-size array arguments replaced).
 !! * 211101: Migration from DESY \c svn to \c gitlab server (includes wiki).
+!! * 211210: Further exploration of sparsity of constraints matrix (C). First the constraints are now
+!!   split into disjoint *groups* for on optimized check of the rank of the product matrix (C*C^t).
+!!   The groups are then combined into non overlapping *blocks* for an efficient QL decompsition in
+!!   case of elimination of constraints. For solution by "unpackedLAPACK" the QL decomposition is
+!!   now using the internal sparsity-aware code as default. To use LAPACK routines for this the
+!!   new command \ref cmd-withlapackelim has to be used.
+!! * 211222: Constraints groups included in \ref cmd-checkinput. Documentation for
+!!   \ref ch-checkinput and \ref troubleshooting_page added.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -159,6 +167,8 @@
 !! \subpage option_page
 !!
 !! \subpage exit_code_page
+!!
+!! \subpage troubleshooting_page
 !!
 !! \section Contact
 !!
@@ -273,7 +283,7 @@
 !! The symmetric global matrix can be stored in **packed** triangular (similar to **full** for inversion etc)
 !! or **unpacked** quadaratic \ref mpmod::matsto "shape".
 !! For unpacked storage the \ref ch-elim-const "elimination of constraints" is
-!! implemented with LAPACK (DGEQLF, DORMQL).
+!! implemented with LAPACK (DGEQLF, DORMQL) as alternative.
 !!
 !! For positive definte matrices (elimination of constraints) a Cholesky factorization is used (DPPTRF/DPOTRF) and
 !! for infinite matrices (Lagrange multipliers for constraints) a Bunch-Kaufman factorization (DSPTRF/DSYTRF).
@@ -365,6 +375,46 @@
 !! The number of binary files has no hard-coded limit anymore, but is calculated from
 !! the steering file and resources (file names, descriptors, ..)
 !! are allocated dynamically. Some resources may be limited by the system.
+!!
+!! \section ch-checkinput Check input mode
+!! The **Pede** executable can be run in special modes to only check the input
+!! without producing a solution. This can be useful in case of problems.
+!! Checked are the global parameters and their (equality) constraints from the steering
+!! and binary files. Debug information is written to the standard output and the
+!! <tt>millepede.res</tt> text file.
+!!
+!! 1. Basic checks: Command '\ref cmd-checkinput 1' or command line option '\ref opt-c'
+!!
+!!   To standard output:
+!!   - For each constraint the number of all and of variable global parameters involved.
+!!     *Empty* constraints without variable parameters should be removed.
+!!   - Constraint group definitions (first and last (sorted (by global labels)) constraint,
+!!     first and last global label). Are disjoint (in global labels) sets of constraints.
+!!   - Constraint block definitions (first and last constraint group, first and last global label).
+!!     Are non overlapping (in global labels) sets of constraints.
+!!
+!!   To text file:
+!!   - For each global parameter the label, value, presigma, number of entries, constraint
+!!     group (0 for none) and status (variable or fixed).
+!!   - For the first parameter of a parameter group (consecutive parameter (labels) appearing
+!!     always togther) the line starts with '<tt>!></tt>'.
+!!   - For each constraint group the number of contributing constraints, number of entries
+!!     and first and last global label.
+!!
+!! 2. More checks: Command '\ref cmd-checkinput 2' or command line option '\ref opt-C'
+!!
+!!   Additionally to standard output:
+!!   - For each **sorted** constraint the index by appearance (in text file with number
+!!     of first line (empty lines not counted)) and first and last global label.
+!!   - For each constraint group the number of constraints and the rank of the corresponding
+!!     block of the product matrix. Must be equal!
+!!
+!!   Additionally to text file:
+!!   - For each global parameter the appearance (in binary files) statistics
+!!     (first file and record number, last file and record number and number of files)
+!!     and number of paired global parameters (appearing together).
+!!   - For each constraint group the label ranges of (not contributing) paired global parameters.
+!!   - For each constraint group the appearance statistics (using the constributing global labels).
 !!
 
 !> \page option_page List of options and commands
@@ -589,6 +639,10 @@
 !! \subsection cmd-withelim withelimination
 !! Set flag \ref mpmod::icelim "icelim" to 1 (true).
 !! Selects solution by elimination for linear equality constraints.
+!! \subsection cmd-withlapackelim withlapackelimination
+!! Set flag \ref mpmod::icelim "icelim" to 2 (LAPACK).
+!! Selects solution by elimination for linear equality constraints with LAPACK.
+!! Only available for unpacked LAPACK!
 !! \subsection cmd-withmult withmultipliers
 !! Set flag \ref mpmod::icelim "icelim" to 0 (false).
 !! Selects solution by Lagrange multipliers for linear equality constraints.
@@ -632,6 +686,39 @@
 !!    + **33**   Aborted, stack overflow in quicksort
 !!    + **34**   Aborted, pattern string too long - obsolete
 !!    + **35**   Aborted, mismatch of number of global parameters
+
+!> \page troubleshooting_page Troubleshooting
+!!
+!! \section ch-experience General experience:
+!!
+!! In the ideal case the track and geometry models are correct and complete,
+!! the measurement errors are gaussian and described perfectly
+!! and all dependencies are linear. With this (probably unrealistic)
+!! requirements pede should end *normally* (return code 0).
+!!
+!! In the real world measurement errors can be non gaussian (e.g.
+!! binary readout or multiple scattering (tails)) or dependencies
+!! non linear (e.g. curvature or rotations). Therefore pede usually
+!! ends with *warnings* (return code 1).
+!!
+!! In case of problems with the linear equation system (e.g. to few measurements,
+!! linear dependent constraints or global matrix not positive definite) pede
+!! still tries to get a solution and ends with *severe warnings*
+!! (return code 2). The solution is very probable not reliable and should be
+!! 'handled with care'. The pede input (steering and binary files) should be
+!! \ref ch-checkinput "checked" thoroughly.
+!!
+!! \section ch-aborts Aborts
+!! In case of severe (usually technical) problems pede aborts (return code >= 10).
+!! It may be helpful to \ref ch-checkinput "check" the pede input
+!! (steering and binary files).
+!!
+!! For 'too many rejects' (return code 26) usually the measurement errors
+!! are largely underestimated. It may help to inflate those in pede
+!! (command \ref cmd-scaleerrors) or to skip the internal iterations
+!! (command \ref cmd-subito or command line option \ref opt-s)
+!! to get *some* solution.
+!!
 
 !> Millepede II main program \ref sssec-stalone "Pede".
 PROGRAM mptwo
@@ -1343,19 +1430,24 @@ SUBROUTINE prpcon
     IMPLICIT NONE
     INTEGER(mpi) :: i
     INTEGER(mpi) :: icgb
-    INTEGER(mpi) :: isblck
+    INTEGER(mpi) :: icgrp
     INTEGER(mpi) :: ifrst
     INTEGER(mpi) :: ilast
+    INTEGER(mpi) :: isblck
     INTEGER(mpi) :: itgbi
     INTEGER(mpi) :: ivgb
+    INTEGER(mpi) :: j
     INTEGER(mpi) :: jcgb
+    INTEGER(mpi) :: jfrst
     INTEGER(mpi) :: label
     INTEGER(mpi) :: labelf
     INTEGER(mpi) :: labell
     INTEGER(mpi) :: ncon
     INTEGER(mpi) :: npar
-    INTEGER(mpi) :: nconmx
-    INTEGER(mpi) :: nparmx
+    INTEGER(mpi) :: ncnmxb
+    INTEGER(mpi) :: ncnmxg
+    INTEGER(mpi) :: nprmxb
+    INTEGER(mpi) :: nprmxg
     INTEGER(mpi) :: inone
     INTEGER(mpi) :: itype
     INTEGER(mpi) :: ncgbw
@@ -1366,6 +1458,10 @@ SUBROUTINE prpcon
 
     INTEGER(mpl):: length
     INTEGER(mpl) :: rows
+    
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecParConsOffsets
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecParConsList
+    INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: matConsGroupIndex
 
     ncgb=0
     ncgbw=0
@@ -1403,7 +1499,10 @@ SUBROUTINE prpcon
         IF(label > 0) THEN
             itgbi=inone(label) ! -> ITGBI= index of parameter label
             ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
-            IF (ivgb > 0) nvar=nvar+1
+            IF (ivgb > 0) THEN
+                nvar=nvar+1
+                globalParCons(ivgb)=globalParCons(ivgb)+1
+            END IF    
         END IF
         IF(label > 0.AND.itype == 2) THEN  ! weighted constraints
             itgbi=inone(label) ! -> ITGBI= index of parameter label
@@ -1442,93 +1541,247 @@ SUBROUTINE prpcon
     ! start of constraint in list
     CALL mpalloc(vecConsStart,length,'start of constraint in list (I)')
     vecConsStart(ncgb+1)=lenConstraints+1
+    ! start and parameter range of constraint groups 
+    CALL mpalloc(matConsGroups,rows,length,'start of constraint groups, par. range (I)')
     ! start and parameter range of constraint blocks 
     CALL mpalloc(matConsBlocks,rows,length,'start of constraint blocks, par. range (I)')
-
+    length=ncgb; rows=4
+    CALL mpalloc(matConsRanges,rows,length,'parameter ranges for constraint (I)') 
+    
+    ! Exploit sparsity of constraints:
+    ! 1) bottom/up splitting into disjoint groups (-> rank check with product matrix)
+    ! 2) combination into non overlaping blocks (-> QL decomposition)
+    length=ncgb; rows=3
+    CALL mpalloc(matConsGroupIndex,rows,length,'group index for constraint (I)')    
+    matConsGroupIndex=0   
+    length=nvgb+1
+    CALL mpalloc(vecParConsOffsets,length,'offsets for cons. list for global par. (I)')
+    vecParConsOffsets(1)=0
+    DO i=1,nvgb
+        vecParConsOffsets(i+1)=vecParConsOffsets(i)+globalParCons(i)
+    END DO
+    globalParCons=0
+    length=vecParConsOffsets(nvgb+1)
+    CALL mpalloc(vecParConsList,length,'constraint list for global par. (I)')
+    
     ! prepare
     i=1
     DO icgb=1,ncgb
         ! new constraint 
         vecConsStart(icgb)=i
-        matConsSort(1,icgb)=ntgb ! min variable parameter
-        matConsSort(2,icgb)=0    ! max variable parameter
-        matConsSort(3,icgb)=icgb ! index
+        matConsRanges(1,icgb)=ntgb ! min variable parameter
+        matConsRanges(2,icgb)=0    ! max variable parameter
         i=i+2
         DO
             label=listConstraints(i)%label
             itgbi=inone(label) ! -> ITGBI= index of parameter label
             ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
             IF(ivgb > 0) THEN
-                matConsSort(1,icgb)=min(matConsSort(1,icgb),ivgb)
-                matConsSort(2,icgb)=max(matConsSort(2,icgb),ivgb)
+                matConsRanges(1,icgb)=min(matConsRanges(1,icgb),ivgb)
+                matConsRanges(2,icgb)=max(matConsRanges(2,icgb),ivgb)
+                ! list of constraints for 'ivgb' 
+                globalParCons(ivgb)=globalParCons(ivgb)+1
+                vecParConsList(vecParConsOffsets(ivgb)+globalParCons(ivgb))=icgb
             END IF    
             i=i+1
             IF(i > lenConstraints) EXIT
             IF(listConstraints(i)%label == 0) EXIT
         END DO
     END DO
-    ! force single 'full size' block
-    !matConsSort(1,1)=1
-    !matConsSort(2,1)=nvgb
-    ! sort constraints
-    CALL sort2i(matConsSort,ncgb)
     
-    ! loop over sorted constraints, try to split into blocks
+    ! sort (by first, last parameter)
+    DO icgb=1,ncgb
+        matConsSort(1,icgb)=matConsRanges(1,icgb) ! first par.
+        matConsSort(2,icgb)=matConsRanges(2,icgb) ! last par.
+        matConsSort(3,icgb)=icgb                 ! index
+    END DO
+    CALL sort2i(matConsSort,ncgb)
+
+    ! split into disjoint groups
+    ncgrp=0
+    DO jcgb=1,ncgb
+        icgb=matConsSort(3,jcgb)
+        i=vecConsStart(icgb)+2
+        ! alredy part of block?
+        icgrp=matConsGroupIndex(1,icgb)
+        IF (icgrp == 0) THEN
+            ! check all parameters
+            DO
+                label=listConstraints(i)%label
+                itgbi=inone(label) ! -> ITGBI= index of parameter label
+                ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
+                IF(ivgb > 0) THEN
+                    ! check all related constraints
+                    DO j=vecParConsOffsets(ivgb)+1,vecParConsOffsets(ivgb+1)
+                        icgrp=matConsGroupIndex(1,vecParConsList(j))
+                        ! already part of block?
+                        IF (icgrp > 0) EXIT
+                    END DO
+                END IF    
+                IF (icgrp > 0) EXIT
+                i=i+1
+                IF(i > lenConstraints) EXIT
+                IF(listConstraints(i)%label == 0) EXIT
+            END DO        
+            IF (icgrp == 0) THEN
+                ! new block
+                ncgrp=ncgrp+1
+                icgrp=ncgrp
+            END IF
+        END IF
+        ! add to block
+        i=vecConsStart(icgb)+2
+        matConsGroupIndex(2,icgb)=jcgb     
+        matConsGroupIndex(3,icgb)=icgb     
+        DO
+            label=listConstraints(i)%label
+            itgbi=inone(label) ! -> ITGBI= index of parameter label
+            ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
+            IF(ivgb > 0) THEN
+                ! mark all related constraints
+                DO j=vecParConsOffsets(ivgb)+1,vecParConsOffsets(ivgb+1)
+                    matConsGroupIndex(1,vecParConsList(j))=icgrp
+                END DO
+            END IF    
+            i=i+1
+            IF(i > lenConstraints) EXIT
+            IF(listConstraints(i)%label == 0) EXIT
+        END DO
+    END DO
+
+    ! sort by group number
+    CALL sort2i(matConsGroupIndex,ncgb)
+           
+    matConsGroups(1,1:ncgrp)=0
+    DO jcgb=1,ncgb
+        ! set up matConsSort
+        icgb=matConsGroupIndex(3,jcgb)
+        matConsSort(1,jcgb)=matConsRanges(1,icgb)
+        matConsSort(2,jcgb)=matConsRanges(2,icgb)
+        matConsSort(3,jcgb)=icgb
+        ! set up matConsBlocks
+        icgrp=matConsGroupIndex(1,jcgb)
+        IF (matConsGroups(1,icgrp) == 0) THEN
+            matConsGroups(1,icgrp)=jcgb
+            matConsGroups(2,icgrp)=matConsRanges(1,icgb)     
+            matConsGroups(3,icgrp)=matConsRanges(2,icgb)
+        ELSE    
+            matConsGroups(2,icgrp)=min(matConsGroups(2,icgrp),matConsRanges(1,icgb))      
+            matConsGroups(3,icgrp)=max(matConsGroups(3,icgrp),matConsRanges(2,icgb))
+        ENDIF  
+    END DO
+    matConsGroups(1,ncgrp+1)=ncgb+1
+    matConsGroups(2,ncgrp+1)=ntgb+1
+    
+    ! clean up
+    CALL mpdealloc(vecParConsList)
+    CALL mpdealloc(vecParConsOffsets)
+    CALL mpdealloc(matConsGroupIndex)    
+
+    ! loop over constraints groups, combine into non overlapping blocks
     ncblck=0
-    nconmx=0
-    nparmx=0
+    ncnmxg=0
+    nprmxg=0
+    ncnmxb=0
+    nprmxb=0    
     mszcon=0
     mszprd=0
     isblck=1
     ilast=0
-    DO jcgb=1,ncgb
-        ! index in list 
-        icgb=matConsSort(3,jcgb)
-        ! split into disjoint blocks
-        ilast=max(ilast, matConsSort(2,jcgb))
-        IF (icheck > 1) THEN
-            IF (matConsSort(2,jcgb) > matConsSort(1,jcgb)) THEN
-                labelf=globalParLabelIndex(1,globalParVarToTotal(matConsSort(1,jcgb)))
-                labell=globalParLabelIndex(1,globalParVarToTotal(matConsSort(2,jcgb)))
+    DO icgrp=1,ncgrp 
+        IF  (icheck > 1) THEN
+            DO jcgb=matConsGroups(1,icgrp),matConsGroups(1,icgrp+1)-1
+                icgb=matConsSort(3,jcgb)
+                IF (matConsSort(2,jcgb) > matConsSort(1,jcgb)) THEN
+                    labelf=globalParLabelIndex(1,globalParVarToTotal(matConsSort(1,jcgb)))
+                    labell=globalParLabelIndex(1,globalParVarToTotal(matConsSort(2,jcgb)))
+                ELSE
+                    labelf=0; labell=0
+                END IF
+                WRITE(*,*) ' Cons. sorted', jcgb, icgb, vecConsStart(icgb), labelf, labell
+            END DO
+        END IF 
+        IF (icheck > 0) THEN
+            IF (matConsGroups(3,icgrp) > matConsGroups(2,icgrp)) THEN 
+                labelf=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(2,icgrp)))
+                labell=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(3,icgrp)))
             ELSE
                 labelf=0; labell=0
             END IF
-            WRITE(*,*) ' Cons. sorted', jcgb, icgb, vecConsStart(icgb), labelf, labell
-        END IF   
-        IF (matConsSort(1,jcgb+1) > ilast) THEN
+            WRITE(*,*) ' Cons. group ', icgrp, matConsGroups(1,icgrp), &
+                matConsGroups(1,icgrp+1)-1, labelf, labell
+        ENDIF
+        ! combine into non overlapping blocks
+        ilast=max(ilast, matConsGroups(3,icgrp))
+        IF (matConsGroups(2,icgrp+1) > ilast) THEN
             ncblck=ncblck+1
-            ifrst=matConsSort(1,isblck)
+            ifrst=matConsGroups(2,isblck)
             IF (ifrst > ilast) ifrst=ilast+1 ! empty constraint block (enforce npar=0)
-            matConsBlocks(1,ncblck)=isblck
+            matConsBlocks(1,ncblck)=matConsGroups(1,isblck)
             matConsBlocks(2,ncblck)=ifrst ! save first parameter in block
             matConsBlocks(3,ncblck)=ilast ! save last parameter in block
-            ncon=jcgb+1-isblck
+            ! update matConsSort
+            jfrst=matConsGroups(2,icgrp)
+            DO i=icgrp,isblck,-1
+                DO j=matConsGroups(1,i),matConsGroups(1,i+1)-1
+                    ! non zero range (from group)
+                    matConsRanges(1,j)=matConsGroups(2,i) 
+                    matConsRanges(2,j)=matConsGroups(3,i)
+                    ! storage range (from max group, ilast)
+                    jfrst=min(jfrst,matConsGroups(2,i)) 
+                    matConsRanges(3,j)=jfrst 
+                    matConsRanges(4,j)=ilast 
+                END DO 
+                ! storage sizes
+                ncon=matConsGroups(1,i+1)-matConsGroups(1,i)
+                npar=matConsRanges(4,matConsGroups(1,i))+1-matConsRanges(3,matConsGroups(1,i))
+                ncnmxg=max(ncnmxg,ncon)
+                nprmxg=max(nprmxg,npar)
+                mszcon=mszcon+INT(ncon,mpl)*INT(npar,mpl)       ! (sum of) block size for constraint matrix
+                mszprd=mszprd+INT(ncon,mpl)*INT(ncon+1,mpl)/2   ! (sum of) block size for product matrix
+            END DO
+            ! storage sizes
+            ncon=matConsGroups(1,icgrp+1)-matConsGroups(1,isblck)
             npar=ilast+1-ifrst
-            nconmx=max(nconmx,ncon)
-            nparmx=max(nparmx,npar)
-            mszcon=mszcon+INT(ncon,mpl)*INT(npar,mpl)       ! (sum of) block size for constraint matrix     
-            mszprd=mszprd+INT(ncon,mpl)*INT(ncon+1,mpl)/2   ! (sum of) block size for product matrix     
+            ncnmxb=max(ncnmxb,ncon)
+            nprmxb=max(nprmxb,npar)
             IF (icheck > 0) THEN
-                IF (ilast > ifrst) THEN 
+                IF (ilast > ifrst) THEN
                     labelf=globalParLabelIndex(1,globalParVarToTotal(ifrst))
                     labell=globalParLabelIndex(1,globalParVarToTotal(ilast))
                 ELSE
                     labelf=0; labell=0
                 END IF
-                WRITE(*,*) ' Cons. block ', ncblck, isblck, jcgb, labelf, labell
-            ENDIF    
+                WRITE(*,*) ' Cons. block ', ncblck, isblck, icgrp, labelf, labell
+            ENDIF
             ! reset for new block
-            isblck=jcgb+1
+            isblck=icgrp+1
             ! update index ranges
             globalIndexRanges(ifrst)=max(globalIndexRanges(ifrst),ilast)
-        END IF
+        END IF    
     END DO
     matConsBlocks(1,ncblck+1)=ncgb+1
-    
-    IF (ncblck+icheck > 1) THEN
+
+    ! save constraint group for global parameters
+    globalParCons=0
+    DO icgrp=1,ncgrp
+        DO jcgb=matConsGroups(1,icgrp),matConsGroups(1,icgrp+1)-1
+            ! index in list 
+            icgb=matConsSort(3,jcgb)
+            DO j=vecConsStart(icgb)+2,vecConsStart(icgb+1)-1
+                label=listConstraints(j)%label
+                itgbi=inone(label) ! -> ITGBI= index of parameter label
+                globalParCons(itgbi)=icgrp ! save constraint group
+            END DO
+        END DO
+    END DO 
+          
+    IF (ncgrp+icheck > 1) THEN
         WRITE(*,*)
-        WRITE(*,*) 'PRPCON: constraints split into ', ncblck, '(disjoint) blocks'
-        WRITE(*,*) '        max block size (cons., par.) ', nconmx, nparmx
+        WRITE(*,*) 'PRPCON: constraints split into ', ncgrp, '(disjoint) groups,'
+        WRITE(*,*) '        groups  combined  into ', ncblck, '(non overlapping) blocks'
+        WRITE(*,*) '        max group size (cons., par.) ', ncnmxg, nprmxg
+        WRITE(*,*) '        max block size (cons., par.) ', ncnmxb, nprmxb
         IF (icheck > 0) WRITE(*,*) '        total block matrix sizes     ', mszcon, mszprd
     END IF    
 113 FORMAT(' constraint',i6,' : ',i9,' parameters,',i9,' variable')
@@ -1547,8 +1800,8 @@ SUBROUTINE feasma
     REAL(mpd) :: factr
     REAL(mpd) :: sgm
     INTEGER(mpi) :: i
-    INTEGER(mpi) :: iblck
     INTEGER(mpi) :: icgb
+    INTEGER(mpi) :: icgrp
     INTEGER(mpl) :: ij
     INTEGER(mpi) :: ifirst
     INTEGER(mpi) :: ilast
@@ -1593,16 +1846,16 @@ SUBROUTINE feasma
     CALL mpalloc(matConstraintsT,length,'transposed matrix of constraints (blocks)')
     matConstraintsT=0.0_mpd
        
-    ! loop over sorted constraints, fill matrices, get rank, inverted product matrix (in blocks)
-    ioffc=0 ! block offset in constraint matrix
-    ioffp=0 ! block offset in product matrix
+    ! loop over sorted constraints, fill matrices, get rank, inverted product matrix (in groups)
+    ioffc=0 ! group offset in constraint matrix
+    ioffp=0 ! group offset in product matrix
     nrank=0
-    DO iblck=1,ncblck
-        ifirst=matConsBlocks(1,iblck)     ! first constraint in block
-        ilast=matConsBlocks(1,iblck+1)-1  ! last constraint in block
+    DO icgrp=1,ncgrp
+        ifirst=matConsGroups(1,icgrp)      ! first constraint in group
+        ilast=matConsGroups(1,icgrp+1)-1   ! last constraint in group
         ncon=ilast+1-ifirst               
-        ipar0=matConsBlocks(2,iblck)-1    ! parameter offset
-        npar=matConsBlocks(3,iblck)-ipar0 ! number of parameters
+        ipar0=matConsRanges(3,ifirst)-1    ! parameter offset
+        npar=matConsRanges(4,ifirst)-ipar0 ! number of parameters
         DO jcgb=ifirst,ilast
             ! index in list 
             icgb=matConsSort(3,jcgb)
@@ -1616,13 +1869,12 @@ SUBROUTINE feasma
                 itgbi=inone(label) ! -> ITGBI= index of parameter label
                 ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
                 IF(ivgb > 0) matConstraintsT(INT(jcgb-ifirst,mpl)*INT(npar,mpl)+ivgb-ipar0+ioffc)=factr ! matrix element
-                globalParCons(itgbi)=globalParCons(itgbi)+1
                 rhs=rhs-factr*globalParameter(itgbi)     ! reduce residuum
             END DO
             vecConsResiduals(jcgb)=rhs        ! constraint discrepancy
         END DO
         
-        ! get rank of blocks
+        ! get rank of groups
         DO ll=ioffc+1,ioffc+npar
             ij=ioffp
             DO i=1,ncon
@@ -1636,7 +1888,14 @@ SUBROUTINE feasma
         END DO
         !     inversion of product matrix of constraints
         CALL sqminv(matConsProduct(ioffp+1:ij),vecConsResiduals(ifirst:ilast),ncon,irank, auxVectorD, auxVectorI)
-        IF (icheck > 1) WRITE(*,*) ' Constraint block rank', iblck, ncon, irank
+        IF (icheck > 1 .OR. irank < ncon) THEN
+            WRITE(*,*) ' Constraint group, #con, rank', icgrp, ncon, irank
+            IF (irank < ncon) THEN
+                WRITE(*,*) '  .. rank deficit !! '
+                WRITE(*,*) '     E.g. fix all parameters and remove all constraints related to label ', &
+                    globalParLabelIndex(1,globalParVarToTotal(ipar0+1))
+            END IF 
+        END IF    
         nrank=nrank+irank
         ioffc=ioffc+INT(npar,mpl)*INT(ncon,mpl)
         ioffp=ij   
@@ -1658,7 +1917,7 @@ SUBROUTINE feasma
             WRITE(8,*) '         --> enforcing SUBITO mode'
         END IF
     END IF
-     
+    
     ! QL decomposition
     IF (nfgb < nvgb) THEN
         print *
@@ -1668,11 +1927,11 @@ SUBROUTINE feasma
             WRITE(lunlog,*) 'QL decomposition of constraints matrix'
             CALL monini(lunlog,monpg1,monpg2)
         END IF
-        IF(matsto > 0) THEN ! True unless unpacked LAPACK
+        IF(icelim < 2) THEN ! True unless unpacked LAPACK
             ! QL decomposition
             CALL qlini(nvgb,ncgb,npblck,mszcon,monpg1)
             ! loop over parameter blocks
-            CALL qldecb(matConstraintsT,matParBlockOffsets,matConsBlocks,matConsSort)
+            CALL qldecb(matConstraintsT,matParBlockOffsets,matConsBlocks,matConsRanges)
             ! check eignevalues of L
             CALL qlgete(evmin,evmax)
 #ifdef LAPACK64
@@ -1712,10 +1971,10 @@ SUBROUTINE feasib(concut,iact)
     REAL(mpd) :: sgm
     INTEGER(mpi) :: i
     INTEGER(mpi) :: icgb
+    INTEGER(mpi) :: icgrp
     INTEGER(mpi) :: iter
     INTEGER(mpi) :: itgbi
     INTEGER(mpi) :: ivgb
-    INTEGER(mpi) :: iblck
     INTEGER(mpi) :: ieblck
     INTEGER(mpi) :: isblck
     INTEGER(mpi) :: ifirst
@@ -1794,11 +2053,11 @@ SUBROUTINE feasib(concut,iact)
         CALL mpalloc(vecCorrections,INT(nvgb,mpl),'constraint corrections')
         vecCorrections=0.0_mpd
 
-        !      multiply (block-wise) inverse matrix and constraint vector
+        !      multiply (group-wise) inverse matrix and constraint vector
         isblck=0
-        DO iblck=1,ncblck
-            ifirst=matConsBlocks(1,iblck)     ! first constraint in block
-            ilast=matConsBlocks(1,iblck+1)-1  ! last constraint in block
+        DO icgrp=1,ncgrp
+            ifirst=matConsGroups(1,icgrp)      ! first constraint in group
+            ilast=matConsGroups(1,icgrp+1)-1   ! last constraint in group
             ncon=ilast+1-ifirst
             ieblck=isblck+(ncon*(ncon+1))/2
             CALL dbsvx(matConsProduct(isblck+1:ieblck),vecConsResiduals(ifirst:ilast),vecConsSolution(ifirst:ilast),ncon)
@@ -4738,28 +4997,54 @@ END SUBROUTINE prtglo    ! print final log file
 !!
 SUBROUTINE prtstat
     USE mpmod
+    USE mpdalc
 
     IMPLICIT NONE
     REAL(mps):: par
     REAL(mps):: presig
     INTEGER(mpi) :: icount
+    INTEGER(mpi) :: ifrst
+    INTEGER(mpi) :: ilast
+    INTEGER(mpi) :: inext
     INTEGER(mpi) :: itgbi
     INTEGER(mpi) :: itgbl
     INTEGER(mpi) :: itpgrp
     INTEGER(mpi) :: ivgbi
     INTEGER(mpi) :: lup
-    INTEGER(mpi) :: ncon
+    INTEGER(mpi) :: icgrp
+    INTEGER(mpi) :: ipgrp
+    INTEGER(mpi) :: j
+    INTEGER(mpi) :: jpgrp
     INTEGER(mpi) :: k
+    INTEGER(mpi) :: label1
+    INTEGER(mpi) :: label2
+    INTEGER(mpi) :: ncon
+    INTEGER(mpi) :: npair
+    INTEGER(mpi) :: nstep
     CHARACTER :: c1
+    
+    INTEGER(mpl):: length
 
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecPairedParGroups
+
+    INTERFACE ! needed for assumed-shape dummy arguments
+        SUBROUTINE ggbmap(ipgrp,npair,npgrp)
+            USE mpdef
+            INTEGER(mpi), INTENT(IN) :: ipgrp
+            INTEGER(mpi), INTENT(OUT) :: npair
+            INTEGER(mpi), DIMENSION(:), INTENT(OUT) :: npgrp
+        END SUBROUTINE ggbmap
+    END INTERFACE
+        
     SAVE
     !     ...
 
     lup=09
     CALL mvopen(lup,'millepede.res')
     WRITE(lup,*) '*** Results of checking input only, no solution performed ***'
+    WRITE(lup,*) '! === global parameters ==='
     WRITE(lup,*) '! fixed-1: by pre-sigma, -2: by entries cut, -3: by iterated entries cut'
-    WRITE(lup,*) '!      Label       Value     Pre-sigma         Entries Constraints  Status '
+    WRITE(lup,*) '!      Label       Value     Pre-sigma         Entries Cons. group  Status '
     !iprlim=10
     DO itgbi=1,ntgb  ! all parameter variables
         itgbl=globalParLabelIndex(1,itgbi)
@@ -4769,12 +5054,12 @@ SUBROUTINE prtstat
         par=REAL(globalParameter(itgbi),mps)      ! initial value
         presig=REAL(globalParPreSigma(itgbi),mps) ! initial presigma
         icount=globalParCounts(itgbi) ! from binary files
-        ncon=globalParCons(itgbi) ! number of active constraints
+        icgrp=globalParCons(itgbi) ! constraints group
 
         IF (ivgbi <= 0) THEN
-            WRITE(lup,110) c1,itgbl,par,presig,icount,ncon,ivgbi
+            WRITE(lup,110) c1,itgbl,par,presig,icount,icgrp,ivgbi
         ELSE
-            WRITE(lup,111) c1,itgbl,par,presig,icount,ncon
+            WRITE(lup,111) c1,itgbl,par,presig,icount,icgrp
         END IF
     END DO
     ! appearance statistics
@@ -4784,15 +5069,85 @@ SUBROUTINE prtstat
         WRITE(lup,*) '!      Label  First file and record  Last file and record   #files  #paired-par'
         DO itgbi=1,ntgb
             itpgrp=globalParLabelIndex(4,itgbi)
-            WRITE(lup,112) globalParLabelIndex(1,itgbi), (appearanceCounter(itgbi*5+k), k=-4,0), pairCounter(itpgrp)
+            IF (itpgrp > 0) THEN
+                WRITE(lup,112) globalParLabelIndex(1,itgbi), (appearanceCounter(itgbi*5+k), k=-4,0), pairCounter(itpgrp)
+            ELSE ! 'empty' parameter
+                WRITE(lup,112) globalParLabelIndex(1,itgbi)
+            END IF
         END DO
     END IF
+    IF (ncgrp > 0) THEN
+        WRITE(lup,*) '* === constraint groups ==='
+        IF (icheck == 1) THEN 
+            WRITE(lup,*) '*  Group  #Cons.     Entries First label  Last label'
+        ELSE
+            WRITE(lup,*) '*  Group  #Cons.     Entries First label  Last label   Paired label range'
+            length=ntpgrp+ncgrp
+            CALL mpalloc(vecPairedParGroups,length,'paired global parameter groups (I)') 
+        END IF
+        DO icgrp=1, ncgrp
+            label1=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(2,icgrp))) ! first label
+            label2=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(3,icgrp))) ! last label
+            ncon=matConsGroups(1,icgrp+1)-matConsGroups(1,icgrp)
+            WRITE(lup,113) icgrp, ncon,vecConsGroupCounts(icgrp),label1,label2
+            IF (icheck > 1) THEN
+                ipgrp=globalParLabelIndex(4,globalParVarToTotal(matConsGroups(2,icgrp))) ! first par. group
+                ! get paired parameter groups
+                CALL ggbmap(ntpgrp+icgrp,npair,vecPairedParGroups)
+                vecPairedParGroups(npair+1)=0
+                ifrst=0
+                nstep=1
+                DO j=1, npair
+                    jpgrp=vecPairedParGroups(j)
+                    inext=globalTotIndexGroups(1,jpgrp)
+                    DO k=1,globalTotIndexGroups(2,jpgrp)
+                        ! end of continous region ?
+                        IF (ifrst /= 0.AND.inext /= (ilast+nstep)) THEN
+                            label1=globalParLabelIndex(1,ifrst)
+                            label2=globalParLabelIndex(1,ilast)
+                            WRITE(lup,114) label1, label2
+                            ifrst=0
+                        END IF
+                        ! skip 'self-correlations' 
+                        IF (globalParCons(inext) /= icgrp) THEN
+                            IF (ifrst == 0) ifrst=inext
+                            ilast=inext
+                        END IF
+                        inext=inext+1
+                        nstep=1
+                    END DO
+                    ! skip 'empty' parameter
+                    IF (jpgrp == vecPairedParGroups(j+1)-1) THEN
+                        nstep=globalTotIndexGroups(1,vecPairedParGroups(j+1)) &
+                            -(globalTotIndexGroups(1,jpgrp)+globalTotIndexGroups(2,jpgrp)-1)
+                    END IF     
+                END DO
+                IF (ifrst /= 0) THEN
+                    label1=globalParLabelIndex(1,ifrst)
+                    label2=globalParLabelIndex(1,ilast)
+                    WRITE(lup,114) label1, label2
+                END IF    
+            END IF
+        END DO
+        IF (icheck > 1) THEN
+            WRITE(lup,*) '* '
+            WRITE(lup,*) '* Appearance statistics '
+            WRITE(lup,*) '*      Group  First file and record  Last file and record   #files'
+            DO icgrp=1, ncgrp
+                WRITE(lup,115) icgrp, (appearanceCounter((ntgb+icgrp)*5+k), k=-4,0)
+            END DO
+        END IF
+    END IF
+    
     REWIND lup
     CLOSE(UNIT=lup)
 
 110 FORMAT(' !',a1,i10,2X,2G14.5,2i12,'  fixed',I2)
 111 FORMAT(' !',a1,i10,2X,2G14.5,2i12,'  variable')
 112 FORMAT(' !.',i10,6i11)
+113 FORMAT(' * ',i6,i8,3i12)
+114 FORMAT(' *:',48X,i12,' ..',i12)
+115 FORMAT(' *.',i10,5i11)
 END SUBROUTINE prtstat    ! print input statistics
 
 
@@ -6348,6 +6703,8 @@ SUBROUTINE loop2
     INTEGER(mpi) :: icblst
     INTEGER(mpi) :: icboff
     INTEGER(mpi) :: icgb
+    INTEGER(mpi) :: icgrp
+    INTEGER(mpi) :: icount
     INTEGER(mpi) :: iext
     INTEGER(mpi) :: ihis
     INTEGER(mpi) :: ij
@@ -6370,11 +6727,13 @@ SUBROUTINE loop2
     INTEGER(mpi) :: j
     INTEGER(mpi) :: ja
     INTEGER(mpi) :: jb
+    INTEGER(mpi) :: jcgrp
     INTEGER(mpi) :: jext
     INTEGER(mpi) :: jcgb
     INTEGER(mpi) :: jsp
     INTEGER(mpi) :: joff
     INTEGER(mpi) :: k
+    INTEGER(mpi) :: kcgrp
     INTEGER(mpi) :: kfile
     INTEGER(mpi) :: l
     INTEGER(mpi) :: label
@@ -6431,6 +6790,9 @@ SUBROUTINE loop2
     INTEGER(mpi) :: maxGlobalPar = 0
     INTEGER(mpi) :: maxLocalPar = 0
     INTEGER(mpi) :: maxEquations = 0
+    
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsGroupList
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsGroupIndex
 
     INTERFACE ! needed for assumed-shape dummy arguments
         SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
@@ -6451,8 +6813,9 @@ SUBROUTINE loop2
             INTEGER(mpl), DIMENSION(:,:), INTENT(IN) :: nsparr
             INTEGER(mpi), DIMENSION(:), INTENT(OUT) :: nsparc
         END SUBROUTINE spbits
-        SUBROUTINE gpbmap(npgrp,npair)
+        SUBROUTINE gpbmap(ngroup,npgrp,npair)
             USE mpdef
+            INTEGER(mpi), INTENT(IN) :: ngroup
             INTEGER(mpi), DIMENSION(:,:), INTENT(IN) :: npgrp
             INTEGER(mpi), DIMENSION(:), INTENT(OUT) :: npair
         END SUBROUTINE gpbmap
@@ -6488,6 +6851,11 @@ SUBROUTINE loop2
         ! decomposition: enforce elimination
         icelim=1
         WRITE(lunlog,*) ' Elimination for constraints enforced for solution by decomposition!'
+    END IF
+    IF (matsto > 0.AND.icelim > 1) THEN
+        ! decomposition: enforce elimination
+        icelim=1
+        WRITE(lunlog,*) ' Elimination for constraints with mpqldec enforced (LAPACK only for unpacked storage)!'
     END IF
     IF (icelim > 0) THEN ! elimination
         nagb=nvgb          ! total number of parameters
@@ -6551,7 +6919,7 @@ SUBROUTINE loop2
         
     !     read all data files and add all variable index pairs -------------
 
-    IF (icheck > 1) CALL clbmap(ntpgrp)
+    IF (icheck > 1) CALL clbmap(ntpgrp+ncgrp)
 
     IF(matsto == 2) THEN
         CALL clbits(napgrp,mreqpe,mhispe,msngpe,mextnd,ndimbi,nspc) ! get dimension for bit storage, encoding, precision info
@@ -6566,6 +6934,26 @@ SUBROUTINE loop2
         lunmon=9
         CALL mvopen(lunmon,'millepede.mon')
     ENDIF
+
+    ! for checking appearance 
+    IF (icheck > 1) THEN
+        length=5*(ntgb+ncgrp)
+        CALL mpalloc(appearanceCounter,length,'appearance statistics')
+        appearanceCounter=0
+        length=ntgb
+        CALL mpalloc(pairCounter,length,'pair statistics')
+        pairCounter=0
+    END IF
+    
+    ! checking constraint goups
+    IF (icheck > 0.AND. ncgrp > 0) THEN
+        length=ncgrp
+        CALL mpalloc(vecConsGroupCounts,length,'counter for constraint groups')
+        vecConsGroupCounts=0
+        CALL mpalloc(vecConsGroupList,length,'constraint group list')
+        CALL mpalloc(vecConsGroupIndex,length,'constraint group index')
+        vecConsGroupIndex=0
+    END IF
 
     !     reading events===reading events===reading events===reading events=
     nrece =0  ! 'empty' records (no variable global parameters)
@@ -6598,17 +6986,7 @@ SUBROUTINE loop2
     CALL mpalloc(readBufferDataD,length,'read buffer, real')
     ! to read (old) float binary files
     length=(ndimbuf+2)*mthrdr
-    CALL mpalloc(readBufferDataF,length,'read buffer, float')
-    
-    ! for checking appearance 
-    IF (icheck > 1) THEN
-        length=5*ntgb
-        CALL mpalloc(appearanceCounter,length,'appearance statistics')
-        appearanceCounter=0
-        length=ntgb
-        CALL mpalloc(pairCounter,length,'pair statistics')
-        pairCounter=0
-    END IF
+    CALL mpalloc(readBufferDataF,length,'read buffer, float')   
 
     DO
         CALL peread(nr) ! read records
@@ -6655,6 +7033,7 @@ SUBROUTINE loop2
             nagbn =0                     ! count number of global derivatives
             nalcn =0                     ! count number of local  derivatives
             naeqn =0                     ! count number of equations
+            icgrp =0                     ! count constraint groups
             maeqnf=naeqnf
             ist=isfrst(ibuf)
             nst=islast(ibuf)
@@ -6693,6 +7072,45 @@ SUBROUTINE loop2
                             DO k=1,j
                                 CALL inbmap(globalParLabelIndex(4,ij),globalParLabelIndex(4,inder(jb+k)))
                             END DO
+                            jcgrp=globalParCons(ij)
+                            ! correlate constraint groups with 'other' parameter groups
+                            DO k=1,j
+                                kcgrp=globalParCons(inder(jb+k))
+                                IF (kcgrp == jcgrp) CYCLE 
+                                IF (jcgrp > 0) CALL inbmap(ntpgrp+jcgrp,globalParLabelIndex(4,inder(jb+k)))
+                                IF (kcgrp > 0) CALL inbmap(ntpgrp+kcgrp,globalParLabelIndex(4,ij))
+                            END DO
+                        END IF
+                        ! check constraint groups
+                        IF (icheck > 0.AND.ncgrp > 0) THEN
+                            k=globalParCons(ij) ! constraint group
+                            IF (k > 0) THEN
+                                icount=naeqn
+                                IF (mcount > 0) icount=1 ! count records 
+                                IF (vecConsGroupIndex(k) == 0) THEN
+                                    ! add to list
+                                    icgrp=icgrp+1
+                                    vecConsGroupList(icgrp)=k
+                                    ! check appearance 
+                                    IF (icheck > 1) THEN
+                                        joff = 5*(ntgb+k-1)
+                                        kfile=NINT(readBufferDataD(isfrst(ibuf)-1),mpi) ! file
+                                        IF (appearanceCounter(joff+1) == 0) THEN
+                                            appearanceCounter(joff+1) = kfile
+                                            appearanceCounter(joff+2) = nrec-ifd(kfile) ! (local) record number
+                                        END IF
+                                        IF (appearanceCounter(joff+3) /= kfile) appearanceCounter(joff+5)=&
+                                            appearanceCounter(joff+5)+1
+                                        appearanceCounter(joff+3) = kfile
+                                        appearanceCounter(joff+4) = nrec-ifd(kfile) ! (local) record number                                    
+                                    END IF
+                                END IF
+                                IF (vecConsGroupIndex(k) < icount) THEN
+                                    ! count
+                                    vecConsGroupIndex(k)=icount
+                                    vecConsGroupCounts(k)=vecConsGroupCounts(k)+1
+                                END IF
+                            END IF
                         END IF
                         
                         ij=globalParLabelIndex(2,ij)       ! change to variable parameter
@@ -6732,6 +7150,11 @@ SUBROUTINE loop2
             dstat(2)=dstat(2)+REAL(nagbn+2,mpd)                  ! indices,
             dstat(3)=dstat(3)+REAL(nagbn*nagbn+nagbn,mpd)        ! data for MUPDAT
 
+            ! clear constraint groups index
+            DO k=1, icgrp
+                vecConsGroupIndex(vecConsGroupList(k))=0
+            END DO
+            
             CALL sort1k(globalIndexUsage,nagbn) ! sort global par.
   
             IF (nagbn == 0) THEN
@@ -6828,8 +7251,13 @@ SUBROUTINE loop2
     END DO
     !     end=of=data=end=of=data=end=of=data=end=of=data=end=of=data=end=of
     
+    IF (icheck > 0.AND. ncgrp > 0) THEN
+        CALL mpdealloc(vecConsGroupIndex)
+        CALL mpdealloc(vecConsGroupList)
+    END IF
+        
     IF (icheck > 1) THEN
-        CALL gpbmap(globalTotIndexGroups,pairCounter)
+        CALL gpbmap(ntpgrp,globalTotIndexGroups,pairCounter)
     END IF    
     
     ! check constraints and measurements
@@ -7180,7 +7608,11 @@ SUBROUTINE loop2
         END IF
         IF(ncgb > 0) THEN
             IF(nfgb < nvgb) THEN
-                WRITE(lu,*) 'Constraints handled by elimination'
+                IF (icelim > 1) THEN
+                    WRITE(lu,*) 'Constraints handled by elimination with LAPACK'
+                ELSE    
+                    WRITE(lu,*) 'Constraints handled by elimination'
+                END IF    
             ELSE
                 WRITE(lu,*) 'Constraints handled by Lagrange multipliers'
             ENDIF
@@ -7565,7 +7997,8 @@ SUBROUTINE vmprep(msize)
             PRINT *, 'LAPACK optimal block size for DSYTRF:', nbopt
             lplwrk=length*INT(nbopt,mpl)
             CALL mpalloc(lapackWORK, lplwrk,'LAPACK WORK array (D)')
-        ELSE IF(nfgb < nvgb) THEN
+        ELSE IF(nfgb < nvgb.AND.icelim > 1) THEN
+            ! elimination of constraints with LAPACK
             lplwrk=1
             DO i=1,npblck
                 npar=matParBlockOffsets(1,i+1)-matParBlockOffsets(1,i)   ! number of parameters in block
@@ -7626,7 +8059,7 @@ SUBROUTINE minver
                 WRITE(lunlog,*) 'Shrinkage of global matrix (A->Q^t*A*Q)'
                 CALL monini(lunlog,monpg1,monpg2)
             END IF
-            CALL qlssq(avprds,globalMatD,globalRowOffsets,.true.) ! Q^t*A*Q
+            CALL qlssq(avprds,globalMatD,size(globalMatD,kind=mpl),globalRowOffsets,.true.) ! Q^t*A*Q
             IF(monpg1 > 0) CALL monend()
         END IF
     END IF
@@ -7736,7 +8169,7 @@ SUBROUTINE mchdec
             WRITE(lunlog,*) 'Shrinkage of global matrix (A->Q^t*A*Q)'
             CALL monini(lunlog,monpg1,monpg2)
         END IF
-        IF(nfgb < nvgb) CALL qlssq(avprds,globalMatD,globalRowOffsets,.true.) ! Q^t*A*Q
+        IF(nfgb < nvgb) CALL qlssq(avprds,globalMatD,size(globalMatD,kind=mpl),globalRowOffsets,.true.) ! Q^t*A*Q
         IF(monpg1 > 0) CALL monend()
     END IF
 
@@ -7853,7 +8286,7 @@ SUBROUTINE mdptrf
                 WRITE(lunlog,*) 'Shrinkage of global matrix (A->Q^t*A*Q)'
                 CALL monini(lunlog,monpg1,monpg2)
             END IF
-            CALL qlssq(avprds,globalMatD,globalRowOffsets,.true.) ! Q^t*A*Q
+            CALL qlssq(avprds,globalMatD,size(globalMatD,kind=mpl),globalRowOffsets,.true.) ! Q^t*A*Q
             IF(monpg1 > 0) CALL monend()
         END IF
     END IF
@@ -7970,7 +8403,7 @@ SUBROUTINE mdutrf
     
     REAL(mpd) :: matij
         
-    EXTERNAL avprd0
+    EXTERNAL avprds
 
     SAVE
     !     ...
@@ -7990,7 +8423,11 @@ SUBROUTINE mdutrf
                 WRITE(lunlog,*) 'Shrinkage of global matrix (A->Q^t*A*Q)'
                 CALL monini(lunlog,monpg1,monpg2)
             END IF
-            CALL lpavat(.true.)
+            IF (icelim > 1) THEN
+                CALL lpavat(.true.)
+            ELSE
+                CALL qlssq(avprds,globalMatD,size(globalMatD,kind=mpl),globalRowOffsets,.true.) ! Q^t*A*Q            
+            END IF    
             IF(monpg1 > 0) CALL monend()
         END IF
     END IF
@@ -8006,15 +8443,23 @@ SUBROUTINE mdutrf
         nfit=npar+ncon; IF (icelim > 0) nfit=npar-ncon ! number of fit parameters in block
         ! use elimination for constraints ?
         IF(nfit < npar) THEN
-            ! solve L^t*y=d by backward substitution
-            vecConsSolution(1:ncon)=vecConsResiduals(icoff+1:icoff+ncon)
-            CALL dtrtrs('L','T','N',INT(ncon,mpl),1_mpl,lapackQL(iloff+npar-ncon+1:),INT(npar,mpl),&
-                vecConsSolution,INT(ncon,mpl),infolp)
-            IF(infolp /= 0) PRINT *, ' DTRTRS failed: ', infolp
-            ! transform, reduce rhs, Q^t*b
-            CALL dormql('L','T',INT(npar,mpl),1_mpl,INT(ncon,mpl),lapackQL(iloff+1:),INT(npar,mpl),&
-                lapackTAU(icoff+1:),globalCorrections(ipoff+1:),INT(npar,mpl),lapackWORK,lplwrk,infolp)
-            IF(infolp /= 0) PRINT *, ' DORMQL failed: ', infolp
+            IF (icelim > 1) THEN
+                ! solve L^t*y=d by backward substitution
+                vecConsSolution(1:ncon)=vecConsResiduals(icoff+1:icoff+ncon)
+                CALL dtrtrs('L','T','N',INT(ncon,mpl),1_mpl,lapackQL(iloff+npar-ncon+1:),INT(npar,mpl),&
+                    vecConsSolution,INT(ncon,mpl),infolp)
+                IF(infolp /= 0) PRINT *, ' DTRTRS failed: ', infolp
+                ! transform, reduce rhs, Q^t*b
+                CALL dormql('L','T',INT(npar,mpl),1_mpl,INT(ncon,mpl),lapackQL(iloff+1:),INT(npar,mpl),&
+                    lapackTAU(icoff+1:),globalCorrections(ipoff+1:),INT(npar,mpl),lapackWORK,lplwrk,infolp)
+                IF(infolp /= 0) PRINT *, ' DORMQL failed: ', infolp
+            ELSE
+                CALL qlsetb(ib)
+                ! solve L^t*y=d by backward substitution
+                CALL qlbsub(vecConsResiduals(icoff+1:),vecConsSolution)
+                ! transform, reduce rhs
+                CALL qlmlq(globalCorrections(ipoff+1:),1,.true.) ! Q^t*b   
+            END IF
             ! correction from eliminated part
             DO i=1,nfit
                 DO j=1,ncon
@@ -8079,12 +8524,18 @@ SUBROUTINE mdutrf
 
         !use elimination for constraints ?
         IF(nfit < npar) THEN
-            ! correction from eliminated part
-            globalCorrections(nfit+1+ipoff:npar+ipoff)=vecConsSolution(1:ncon)
-            ! extend, transform back solution, Q*x
-            CALL dormql('L','N',INT(npar,mpl),1_mpl,INT(ncon,mpl),lapackQL(iloff+1:),INT(npar,mpl),&
-                lapackTAU(icoff+1:),globalCorrections(ipoff+1:),INT(npar,mpl),lapackWORK,lplwrk,infolp)
-            IF(infolp /= 0) PRINT *, ' DORMQL failed: ', infolp
+            IF (icelim > 1) THEN
+                ! correction from eliminated part
+                globalCorrections(nfit+1+ipoff:npar+ipoff)=vecConsSolution(1:ncon)
+                ! extend, transform back solution, Q*x
+                CALL dormql('L','N',INT(npar,mpl),1_mpl,INT(ncon,mpl),lapackQL(iloff+1:),INT(npar,mpl),&
+                    lapackTAU(icoff+1:),globalCorrections(ipoff+1:),INT(npar,mpl),lapackWORK,lplwrk,infolp)
+                IF(infolp /= 0) PRINT *, ' DORMQL failed: ', infolp
+            ELSE
+                ! extend, transform back solution
+                globalCorrections(nfit+1+ipoff:npar+ipoff)=vecConsSolution(1:ncon)
+                CALL qlmlq(globalCorrections(ipoff+1:),1,.false.) ! Q*x            
+            END IF    
         END IF
         iloff=iloff+INT(npar,mpl)*INT(ncon,mpl)
     END DO
@@ -8319,7 +8770,7 @@ SUBROUTINE mdiags
 
     !use elimination for constraints ?
     IF(nfgb < nvgb) THEN
-        IF(icalcm == 1) CALL qlssq(avprds,globalMatD,globalRowOffsets,.true.) ! Q^t*A*Q
+        IF(icalcm == 1) CALL qlssq(avprds,globalMatD,size(globalMatD,kind=mpl),globalRowOffsets,.true.) ! Q^t*A*Q
         ! solve L^t*y=d by backward substitution
         CALL qlbsub(vecConsResiduals,vecConsSolution)
         ! transform, reduce rhs
@@ -9291,8 +9742,8 @@ SUBROUTINE xloopn                !
                 WRITE(lunlog,*) 'Expansion of global matrix (A->Q*A*Q^t)'
                 CALL monini(lunlog,monpg1,monpg2)
             END IF
-            IF(matsto > 0) THEN
-                CALL qlssq(avprds,globalMatD,globalRowOffsets,.false.) ! Q*A*Q^t
+            IF(icelim < 2) THEN
+                CALL qlssq(avprds,globalMatD,size(globalMatD,kind=mpl),globalRowOffsets,.false.) ! Q*A*Q^t
 #ifdef LAPACK64                    
             ELSE ! unpack storage, use LAPACK
                 CALL lpavat(.false.)
@@ -10627,6 +11078,15 @@ SUBROUTINE intext(text,nline)
             RETURN
         END IF
 
+#ifdef LAPACK64
+        keystx='withLAPACKelimination'
+        mat=matint(text(keya:keyb),keystx,npat,ntext) ! comparison
+        IF(100*mat >= 80*max(npat,ntext)) THEN ! 80% (symmetric) matching
+            icelim=2
+            RETURN
+        END IF
+#endif        
+        
         keystx='withmultipliers'
         mat=matint(text(keya:keyb),keystx,npat,ntext) ! comparison
         IF(100*mat >= 80*max(npat,ntext)) THEN ! 80% (symmetric) matching

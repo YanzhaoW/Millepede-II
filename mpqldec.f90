@@ -51,7 +51,7 @@ END MODULE mpqldec
 !! \param [in]     n  number of rows (parameters)
 !! \param [in]     m  number of columns (constraints)
 !! \param [in]     l  number of disjoint blocks
-!! \param [in]     s  size of constrints matrix (compressed or n*m)
+!! \param [in]     s  size of constraints matrix (compressed or n*m)
 !! \param [in]     k  flag for progress monitoring
 !!
 SUBROUTINE qlini(n,m,l,s,k)
@@ -210,9 +210,9 @@ END SUBROUTINE qldec
 !! \param [in]     a     block compressed Npar-by-Ncon matrix
 !! \param [in]     bpar  2-by-NparBlock+1    matrix (with parameter block definition)
 !! \param [in]     bcon  3-by-Ncon(Block)s+1 matrix (with constraint block definition)
-!! \param [in]     cons  3-by-Ncons+1        matrix (with constraint definition)
+!! \param [in]     rcon  4-by-Ncons          matrix (with constraint ranges)
 !!
-SUBROUTINE qldecb(a,bpar,bcon,cons)
+SUBROUTINE qldecb(a,bpar,bcon,rcon)
     USE mpqldec
     USE mpdalc
 
@@ -246,7 +246,7 @@ SUBROUTINE qldecb(a,bpar,bcon,cons)
     REAL(mpd), INTENT(IN)             :: a(matsize)
     INTEGER(mpi), INTENT(IN)          :: bpar(2,nblock+1)
     INTEGER(mpi), INTENT(IN)          :: bcon(3,ncon+1)
-    INTEGER(mpi), INTENT(IN)          :: cons(3,ncon+1)
+    INTEGER(mpi), INTENT(IN)          :: rcon(4,ncon)
 
     !$POMP INST BEGIN(qldecb)
     ! prepare 
@@ -264,10 +264,12 @@ SUBROUTINE qldecb(a,bpar,bcon,cons)
             ifirst=bcon(2,ibcon)
             ilast=bcon(3,ibcon)
             DO i=bcon(1,ibcon),bcon(1,ibcon+1)-1
-                ioffRow(i+1)=ioffRow(i)+npb  ! row offset
-                ioffPar(i)=bcon(2,ibcon)-1   ! parameter offset
-                irangeParNZ(1,i)=cons(1,i)
-                irangeParNZ(2,i)=cons(2,i)
+                ! non-zero range: first, last parameter
+                irangeParNZ(1,i)=rcon(1,i)
+                irangeParNZ(2,i)=rcon(2,i)
+                ! storage: parameter, row offset
+                ioffPar(i)=rcon(3,i)-1
+                ioffRow(i+1)=ioffRow(i)+rcon(4,i)-ioffPar(i)
             END DO
             iclast=iclast+ncb
         END DO
@@ -344,10 +346,12 @@ SUBROUTINE qldecb(a,bpar,bcon,cons)
                 vecN(ifirst:ilast)=vecN(ifirst:ilast)/nrm
             END IF
             ! update L too
-            ioff3=INT(k1-1,mpl)*INT(ncon,mpl)
+            ioff3=INT(k1-2,mpl)*INT(ncon,mpl)
             ! transformation
             DO i=k1,k
-                ioff2=ioffRow(i)
+                ioff3=ioff3+ncon
+                IF (irangeParNZ(1,k) > irangeParNZ(2,i)) CYCLE ! no overlap
+                ioff2=ioffRow(i)+ioffPar(k)-ioffPar(i)
                 sp=dot_product(vecN(ifirst:ilast),matV(ioff2+1:ioff2+ncol))
                 IF (sp /= 0.0_mpd) THEN
                     ! update matV
@@ -359,7 +363,6 @@ SUBROUTINE qldecb(a,bpar,bcon,cons)
                     irangeParNZ(1,i)=min(irangeParNZ(1,i),irangeParNZ(1,k))
                     irangeParNZ(2,i)=max(irangeParNZ(2,i),irangeParNZ(2,k))
                 END IF
-                ioff3=ioff3+ncon
             END DO  
             ! store secondary diagonal
             vecVk(icoff+k)=vecN(kn)         
@@ -553,10 +556,11 @@ END SUBROUTINE qlsmq
 !! \param [in]     aprod    external procedure to calculate A*v
 !! \param [in,out] A        symmetric Npar-by-Npar matrix A in symmetric or unpacked storage mode
 !!                          overwritten with Q*A*Q^t (t=false) or Q^t*A*Q (t=true)
+!! \param [in]     s        size of A
 !! \param [in]     roff     row offsets for A
 !! \param [in]     t        use transposed of Q
 !!
-SUBROUTINE qlssq(aprod,A,roff,t)
+SUBROUTINE qlssq(aprod,A,s,roff,t)
     USE mpqldec
     USE mpdalc
 
@@ -582,7 +586,8 @@ SUBROUTINE qlssq(aprod,A,roff,t)
     REAL(mpd) :: vtAv
     REAL(mpd), DIMENSION(:), ALLOCATABLE :: Av
 
-    REAL(mpd), INTENT(IN OUT)         :: A((INT(npar,mpl)*INT(npar,mpl)+INT(npar,mpl))/2)
+    REAL(mpd), INTENT(IN OUT)         :: A(s)
+    INTEGER(mpl), INTENT(IN)          :: s
     INTEGER(mpl), INTENT(IN)          :: roff(npar)
     LOGICAL, INTENT(IN)               :: t
 
@@ -1014,6 +1019,8 @@ SUBROUTINE qldump()
     INTEGER(mpi) :: kn
     REAL(mpd) :: v1
     REAL(mpd) :: v2
+    REAL(mpd) :: v3
+    REAL(mpd) :: v4
     
     print *
     ioff1=0
@@ -1043,15 +1050,19 @@ SUBROUTINE qldump()
         ioff1=ioff1+npar
         DO j=1,ncon
             IF (matL(ioff2+j) /= 0.0_mpd) THEN
-                IF (istat(6) == 0) istat(4)=j
+                v4=matL(ioff2+j)
+                IF (istat(6) == 0) THEN
+                    istat(4)=j
+                    v3=v4
+                END IF    
                 istat(5)=j
                 istat(6)=istat(6)+1
             END IF
         END DO
         ioff2=ioff2+ncon
-        print 100, i, istat, v1, v2, irangeParNZ(:,i)  
+        print 100, i, istat, v1, v2, v3, v4, irangeParNZ(:,i)  
     END DO
     print *
-100 FORMAT(" qldump",7I8,2G13.5,2I8)   
+100 FORMAT(" qldump",7I8,4G13.5,2I8)   
     
 END SUBROUTINE qldump

@@ -730,13 +730,15 @@ END SUBROUTINE inbmap
 
 !> Get pairs (statistic) from map.
 !!
+!! \param [in]     ngroup  number of parameter groups
 !! \param [in]     npgrp   parameter groups
 !! \param [out]    npair   number of paired parameters
 !!
-SUBROUTINE gpbmap(npgrp,npair)
+SUBROUTINE gpbmap(ngroup,npgrp,npair)
     USE mpbits
     IMPLICIT NONE
 
+    INTEGER(mpi), INTENT(IN) :: ngroup
     INTEGER(mpi), DIMENSION(:,:), INTENT(IN) :: npgrp
     INTEGER(mpi), DIMENSION(:), INTENT(OUT) :: npair
 
@@ -747,10 +749,10 @@ SUBROUTINE gpbmap(npgrp,npair)
     INTEGER(mpi) :: m
     LOGICAL :: btest
 
-    npair(1:n2)=0
+    npair(1:ngroup)=0
     l=0
 
-    DO i=1,n2
+    DO i=1,ngroup
         npair(i)=npair(i)+npgrp(2,i)-1 ! from own group
         noffi=INT(i-1,mpl)*INT(i-2,mpl)/2
         l=noffi/bs+i
@@ -771,3 +773,51 @@ SUBROUTINE gpbmap(npgrp,npair)
 
     RETURN
 END SUBROUTINE gpbmap
+
+!> Get paired (parameter) groups from map.
+!!
+!! \param [in]     ipgrp   parameter group
+!! \param [out]    npair   number of paired parameters
+!! \param [in]     npgrp   paired parameter groups (for ipgrp)
+!!
+SUBROUTINE ggbmap(ipgrp,npair,npgrp)
+    USE mpbits
+    IMPLICIT NONE
+
+    INTEGER(mpi), INTENT(IN) :: ipgrp
+    INTEGER(mpi), INTENT(OUT) :: npair
+    INTEGER(mpi), DIMENSION(:), INTENT(OUT) :: npgrp
+
+    INTEGER(mpl) :: l
+    INTEGER(mpl) :: noffi
+    INTEGER(mpi) :: noffj
+    INTEGER(mpi) :: i
+    INTEGER(mpi) :: j
+    LOGICAL :: btest
+
+    npair=0
+
+    i=ipgrp
+    noffi=INT(i-1,mpl)*INT(i-2,mpl)/2 ! for J=1    
+    l=noffi/bs+i! row offset
+    !     add I instead of 1 to keep bit maps of different rows in different words (openMP !)
+    DO j=1,ipgrp-1
+        noffj=j-1
+        IF (btest(bitMap(l+noffj/bs),MOD(noffj,bs))) THEN
+            npair=npair+1
+            npgrp(npair)=j
+        END IF 
+    END DO
+ 
+    noffj=ipgrp-1
+    DO i=ipgrp+1,n2
+        noffi=INT(i-1,mpl)*INT(i-2,mpl)/2 ! for J=1    
+        l=noffi/bs+i ! row offset   
+        IF (btest(bitMap(l+noffj/bs),MOD(noffj,bs))) THEN
+            npair=npair+1
+            npgrp(npair)=i
+        END IF 
+    END DO
+
+    RETURN
+END SUBROUTINE ggbmap

@@ -130,7 +130,8 @@ MODULE mpmod
     INTEGER(mpi) :: nvpgrp !< number of variable parameter groups
     INTEGER(mpi) :: napgrp !< number of all parameter groups (variable + Lagrange mult.)
     INTEGER(mpi) :: npblck !< number of (disjoint) parameter blocks (>1: block diagonal storage)
-    INTEGER(mpi) :: ncblck !< number of (disjoint) constraint blocks
+    INTEGER(mpi) :: ncgrp !< number of (disjoint) constraint groups
+    INTEGER(mpi) :: ncblck !< number of (non overlapping) constraint blocks
     INTEGER(mpl) :: mszcon !< (integrated block) matrix size for constraint matrix
     INTEGER(mpl) :: mszprd !< (integrated block) matrix size for (constraint) product matrix
     INTEGER(mpi), DIMENSION(3) :: nprecond !< number of constraints (blocks), matrix size for preconditioner
@@ -230,7 +231,11 @@ MODULE mpmod
     REAL(mpd), DIMENSION(:), ALLOCATABLE :: vecConsSolution !< solution for constraint elimination
     ! constraint sorting, blocks
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsStart !< start of constraint in listConstraints (unsorted input)
+    INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: matConsRanges !< parameter ranges for constraints
     INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: matConsSort !< keys and index for sorting
+    INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: matConsGroups !< start of constraint groups, parameter range 
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsGroupCounts !< counter for constraint groups 
+    INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: matConsGroupStats !< statistics for constraint groups 
     INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: matConsBlocks !< start of constraint blocks, parameter range 
     ! monitoring of input residuals
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: measIndex !< mapping of 1. global label to measurement index
