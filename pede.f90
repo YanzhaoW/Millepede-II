@@ -9,7 +9,7 @@
 !! \author Claus Kleinwort, DESY (maintenance and developement)
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2021 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2022 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -51,7 +51,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-11-01 \
+!!         git clone --depth 1 --branch V04-11-02 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -148,6 +148,7 @@
 !!   new command \ref cmd-withlapackelim has to be used.
 !! * 211222: Constraints groups included in \ref cmd-checkinput. Documentation for
 !!   \ref ch-checkinput and \ref troubleshooting_page added.
+!! * 220616: Cleanup, test programs to print LAPACK (library) configuration added to \c tools directory.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -155,6 +156,7 @@
 !!   records in text form.
 !! * \c readPedeHists.C: ROOT script to read and convert the **Millepede**
 !!   histogram file <tt>millepede.his</tt>.
+!! * \c lapack: Test programs to print LAPACK (library) configuration (MKL, OpenBLAS).
 !!
 !! \section details_sec Details
 !!
@@ -694,26 +696,27 @@
 !! In the ideal case the track and geometry models are correct and complete,
 !! the measurement errors are gaussian and described perfectly
 !! and all dependencies are linear. With this (probably unrealistic)
-!! requirements pede should end *normally* (return code 0).
+!! requirements pede should end *normally* (exit code 0 
+!! (in <tt>millepede.end</tt>)).
 !!
 !! In the real world measurement errors can be non gaussian (e.g.
 !! binary readout or multiple scattering (tails)) or dependencies
 !! non linear (e.g. curvature or rotations). Therefore pede usually
-!! ends with *warnings* (return code 1).
+!! ends with *warnings* (exit code 1).
 !!
 !! In case of problems with the linear equation system (e.g. to few measurements,
 !! linear dependent constraints or global matrix not positive definite) pede
 !! still tries to get a solution and ends with *severe warnings*
-!! (return code 2). The solution is very probable not reliable and should be
+!! (exit code 2). The solution is very probable not reliable and should be
 !! 'handled with care'. The pede input (steering and binary files) should be
 !! \ref ch-checkinput "checked" thoroughly.
 !!
 !! \section ch-aborts Aborts
-!! In case of severe (usually technical) problems pede aborts (return code >= 10).
+!! In case of severe (usually technical) problems pede aborts (exit code >= 10).
 !! It may be helpful to \ref ch-checkinput "check" the pede input
 !! (steering and binary files).
 !!
-!! For 'too many rejects' (return code 26) usually the measurement errors
+!! For 'too many rejects' (exit code 26) usually the measurement errors
 !! are largely underestimated. It may help to inflate those in pede
 !! (command \ref cmd-scaleerrors) or to skip the internal iterations
 !! (command \ref cmd-subito or command line option \ref opt-s)
@@ -764,6 +767,7 @@ PROGRAM mptwo
     CHARACTER (LEN=24) :: chost
 #ifdef LAPACK64
     CHARACTER (LEN=6) :: c6
+    INTEGER major, minor, patch
 #endif
 
     INTEGER(mpl) :: rows
@@ -794,7 +798,9 @@ PROGRAM mptwo
     !$    iopnmp=1
     !$    WRITE(*,*) 'using OpenMP (TM)'
 #ifdef LAPACK64
-    WRITE(*,*) 'using LAPACK64 with ', LAPACK64
+    CALL ilaver( major,minor, patch )
+    WRITE(*,110) LAPACK64, major,minor, patch
+110 FORMAT(' using LAPACK64 with ',(a),', version ',i0,'.',i0,'.',i0)
 #endif    
 #ifdef __GFORTRAN__
     WRITE(*,111)  __GNUC__ , __GNUC_MINOR__ , __GNUC_PATCHLEVEL__
@@ -1692,7 +1698,7 @@ SUBROUTINE prpcon
         IF  (icheck > 1) THEN
             DO jcgb=matConsGroups(1,icgrp),matConsGroups(1,icgrp+1)-1
                 icgb=matConsSort(3,jcgb)
-                IF (matConsSort(2,jcgb) > matConsSort(1,jcgb)) THEN
+                IF (matConsSort(2,jcgb) >= matConsSort(1,jcgb)) THEN
                     labelf=globalParLabelIndex(1,globalParVarToTotal(matConsSort(1,jcgb)))
                     labell=globalParLabelIndex(1,globalParVarToTotal(matConsSort(2,jcgb)))
                 ELSE

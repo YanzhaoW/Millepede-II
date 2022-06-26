@@ -9,7 +9,7 @@
 !! \author Claus Kleinwort, DESY (maintenance and developement)
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2021 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2022 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -898,8 +898,8 @@ SUBROUTINE chdec2(g,n,nrank,evmax,evmin,mon)
     INTEGER(mpl) :: jj
     REAL(mpd) :: ratio
         
-    REAL(mpd), INTENT(IN OUT)         :: g((n*n+n)/2)
     INTEGER(mpi), INTENT(IN)          :: n
+    REAL(mpd), INTENT(IN OUT)         :: g((INT(n,mpl)*INT(n,mpl)+INT(n,mpl))/2)
     INTEGER(mpi), INTENT(OUT)         :: nrank
     REAL(mpd), INTENT(OUT)            :: evmin
     REAL(mpd), INTENT(OUT)            :: evmax
@@ -959,9 +959,9 @@ SUBROUTINE chslv2(g,x,n)
     INTEGER(mpl) :: kk
     REAL(mpd) :: dsum
 
-    REAL(mpd), INTENT(IN)            :: g((n*n+n)/2)
+    INTEGER(mpi), INTENT(IN)          :: n
+    REAL(mpd), INTENT(IN)            :: g((INT(n,mpl)*INT(n,mpl)+INT(n,mpl))/2)
     REAL(mpd), INTENT(IN OUT)        :: x(n)
-    INTEGER(mpi), INTENT(IN)                     :: n
     
     ii=(INT(n,mpl)*INT(n+1,mpl))/2
     DO i=n,1,-1
