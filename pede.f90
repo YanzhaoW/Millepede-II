@@ -51,7 +51,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-11-02 \
+!!         git clone --depth 1 --branch V04-11-03 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -149,6 +149,8 @@
 !! * 211222: Constraints groups included in \ref cmd-checkinput. Documentation for
 !!   \ref ch-checkinput and \ref troubleshooting_page added.
 !! * 220616: Cleanup, test programs to print LAPACK (library) configuration added to \c tools directory.
+!! * 220817: Cleanup, (rare) problem with construction of \ref ch-pargroup "parameter groups" fixed
+!!   (avoiding aborts with exit code 35).
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -1529,7 +1531,7 @@ SUBROUTINE prpcon
             ncgb=ncgb-ncgbe
         ELSE
             WRITE(*,*) 'PRPCON:',ncgbe,' empty constraints detected, to be fixed !!!'
-        END IF     
+        END IF
     END IF
     IF (ncgbw == 0) THEN
         WRITE(*,*) 'PRPCON:',ncgb,' constraints accepted'
@@ -1597,6 +1599,12 @@ SUBROUTINE prpcon
     
     ! sort (by first, last parameter)
     DO icgb=1,ncgb
+        ! empty constraint?
+        IF (matConsRanges(1,icgb) > matConsRanges(2,icgb)) THEN
+            ! enforce npar=0
+            matConsRanges(1,icgb)=ntgb+1
+            matConsRanges(2,icgb)=ntgb            
+        END IF
         matConsSort(1,icgb)=matConsRanges(1,icgb) ! first par.
         matConsSort(2,icgb)=matConsRanges(2,icgb) ! last par.
         matConsSort(3,icgb)=icgb                 ! index
@@ -1655,9 +1663,19 @@ SUBROUTINE prpcon
         END DO
     END DO
 
+    ! dummy groups for empty constraints
+    IF (ncgbe > 0) THEN
+        icgrp=ncgrp
+        DO jcgb=ncgb,1,-1 
+            IF (matConsGroupIndex(1,jcgb) > 0) CYCLE
+            matConsGroupIndex(1,jcgb) = icgrp
+            icgrp=icgrp-1
+        END DO
+    END IF
+
     ! sort by group number
     CALL sort2i(matConsGroupIndex,ncgb)
-           
+               
     matConsGroups(1,1:ncgrp)=0
     DO jcgb=1,ncgb
         ! set up matConsSort
@@ -1674,7 +1692,7 @@ SUBROUTINE prpcon
         ELSE    
             matConsGroups(2,icgrp)=min(matConsGroups(2,icgrp),matConsRanges(1,icgb))      
             matConsGroups(3,icgrp)=max(matConsGroups(3,icgrp),matConsRanges(2,icgb))
-        ENDIF  
+        END IF 
     END DO
     matConsGroups(1,ncgrp+1)=ncgb+1
     matConsGroups(2,ncgrp+1)=ntgb+1
@@ -1708,7 +1726,7 @@ SUBROUTINE prpcon
             END DO
         END IF 
         IF (icheck > 0) THEN
-            IF (matConsGroups(3,icgrp) > matConsGroups(2,icgrp)) THEN 
+            IF (matConsGroups(3,icgrp) >= matConsGroups(2,icgrp)) THEN 
                 labelf=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(2,icgrp)))
                 labell=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(3,icgrp)))
             ELSE
@@ -1722,7 +1740,6 @@ SUBROUTINE prpcon
         IF (matConsGroups(2,icgrp+1) > ilast) THEN
             ncblck=ncblck+1
             ifrst=matConsGroups(2,isblck)
-            IF (ifrst > ilast) ifrst=ilast+1 ! empty constraint block (enforce npar=0)
             matConsBlocks(1,ncblck)=matConsGroups(1,isblck)
             matConsBlocks(2,ncblck)=ifrst ! save first parameter in block
             matConsBlocks(3,ncblck)=ilast ! save last parameter in block
@@ -1752,7 +1769,7 @@ SUBROUTINE prpcon
             ncnmxb=max(ncnmxb,ncon)
             nprmxb=max(nprmxb,npar)
             IF (icheck > 0) THEN
-                IF (ilast > ifrst) THEN
+                IF (ilast >= ifrst) THEN
                     labelf=globalParLabelIndex(1,globalParVarToTotal(ifrst))
                     labell=globalParLabelIndex(1,globalParVarToTotal(ilast))
                 ELSE
@@ -1762,9 +1779,9 @@ SUBROUTINE prpcon
             ENDIF
             ! reset for new block
             isblck=icgrp+1
-            ! update index ranges
-            globalIndexRanges(ifrst)=max(globalIndexRanges(ifrst),ilast)
-        END IF    
+            ! update index ranges (for non empty cons.)
+            IF (ifrst <= nvgb) globalIndexRanges(ifrst)=max(globalIndexRanges(ifrst),ilast)
+        END IF 
     END DO
     matConsBlocks(1,ncblck+1)=ncgb+1
 
@@ -1862,6 +1879,7 @@ SUBROUTINE feasma
         ncon=ilast+1-ifirst               
         ipar0=matConsRanges(3,ifirst)-1    ! parameter offset
         npar=matConsRanges(4,ifirst)-ipar0 ! number of parameters
+        IF (npar <= 0) CYCLE               ! skip empty groups/cons.    
         DO jcgb=ifirst,ilast
             ! index in list 
             icgb=matConsSort(3,jcgb)
@@ -1948,7 +1966,7 @@ SUBROUTINE feasma
         IF(monpg1 > 0) CALL monend()
         PRINT *, '   largest  |eigenvalue| of L: ', evmax
         PRINT *, '   smallest |eigenvalue| of L: ', evmin
-        IF (evmin == 0.0_mpd) THEN
+        IF (evmin == 0.0_mpd.AND.icheck == 0) THEN
             CALL peend(27,'Aborted, singular QL decomposition of constraints matrix')
             STOP 'FEASMA: stopping due to singular QL decomposition of constraints matrix'
         END IF  
@@ -2795,8 +2813,9 @@ SUBROUTINE pargrp(inds,inde)
 
     INTEGER(mpi), INTENT(IN) :: inds
     INTEGER(mpi), INTENT(IN) :: inde
-        
+            
     IF (inds > inde) RETURN
+    
     ltgbi=-1
     lstart=-1
     ! build up groups
@@ -2804,13 +2823,18 @@ SUBROUTINE pargrp(inds,inde)
         itgbi=readBufferDataI(j)
         istart=globalParLabelIndex(3,itgbi)     ! label of group start
         IF (istart == 0) THEN                   ! not yet in group
-            IF (itgbi /= ltgbi+1)THEN           ! start group
+            IF (itgbi /= ltgbi+1) THEN          ! start group
                 globalParLabelIndex(3,itgbi)=globalParLabelIndex(1,itgbi)
-            ELSE                                ! extend group
-                globalParLabelIndex(3,itgbi)=globalParLabelIndex(3,ltgbi)
+            ELSE
+                IF (lstart == 0) THEN           ! extend group
+                    globalParLabelIndex(3,itgbi)=globalParLabelIndex(3,ltgbi)
+                ELSE                            ! start group
+                    globalParLabelIndex(3,itgbi)=globalParLabelIndex(1,itgbi)                
+                END IF    
             END IF
         END IF
         ltgbi=itgbi
+        lstart=istart
     END DO
     ! split groups:
     ! - start inside group?         
@@ -2864,7 +2888,7 @@ SUBROUTINE pargrp(inds,inde)
             itgbi=itgbi+1
             IF (itgbi > globalParHeader(-1)) EXIT
         END DO
-    END IF                                          
+    END IF                                   
 
 END SUBROUTINE pargrp
 
@@ -5092,11 +5116,16 @@ SUBROUTINE prtstat
             CALL mpalloc(vecPairedParGroups,length,'paired global parameter groups (I)') 
         END IF
         DO icgrp=1, ncgrp
-            label1=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(2,icgrp))) ! first label
-            label2=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(3,icgrp))) ! last label
+            IF (matConsGroups(2,icgrp) <= matConsGroups(3,icgrp)) THEN
+                label1=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(2,icgrp))) ! first label
+                label2=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(3,icgrp))) ! last label
+            ELSE ! empty group/cons.
+                label1=0
+                label2=0
+            END IF
             ncon=matConsGroups(1,icgrp+1)-matConsGroups(1,icgrp)
             WRITE(lup,113) icgrp, ncon,vecConsGroupCounts(icgrp),label1,label2
-            IF (icheck > 1) THEN
+            IF (icheck > 1 .AND. label1 > 0) THEN
                 ipgrp=globalParLabelIndex(4,globalParVarToTotal(matConsGroups(2,icgrp))) ! first par. group
                 ! get paired parameter groups
                 CALL ggbmap(ntpgrp+icgrp,npair,vecPairedParGroups)
@@ -9845,6 +9874,7 @@ SUBROUTINE xloopn                !
             WRITE(*,*) '        Fraction of rejects =',crjrat,' %',  &
                 '  (should be far below 1 %)'
             WRITE(*,*) '        => please provide correct mille data'
+            CALL chkrej ! check (and print) rejection details
         END IF
 
         IF(iagain /= 0) THEN
@@ -9962,6 +9992,59 @@ SUBROUTINE xloopn                !
 197 FORMAT(F7.2)
 199 FORMAT(7X,a)
 END SUBROUTINE xloopn                ! standard solution
+
+
+!> Check rejection details
+!!
+!! - weighted rejection fraction
+!! - (bin) file with min/max rejection fraction 
+
+SUBROUTINE chkrej
+    USE mpmod
+    USE mpdalc
+
+    IMPLICIT NONE
+    INTEGER(mpi) :: i
+    INTEGER(mpi) :: kfl
+    INTEGER(mpi) :: kmin
+    INTEGER(mpi) :: kmax
+    INTEGER(mpi) :: nrc
+    INTEGER(mpi) :: nrej
+    
+    REAL(mps) :: fmax
+    REAL(mps) :: fmin
+    REAL(mps) :: frac
+
+    REAL(mpd) :: sumallw
+    REAL(mpd) :: sumrejw
+    
+    sumallw=0.; sumrejw=0.;
+    kmin=0; kmax=0;
+    fmax=-1.; fmin=2;
+    
+    DO i=1,nfilb
+        kfl=kfd(2,i)
+        nrc=-kfd(1,i)
+        IF (nrc > 0) THEN
+            nrej=nrc-jfd(kfl)
+            sumallw=sumallw+REAL(nrc,mpd)*wfd(kfl)
+            sumrejw=sumrejw+REAL(nrej,mpd)*wfd(kfl)
+            frac=REAL(nrej,mps)/REAL(nrc,mps)
+            IF (frac > fmax) THEN
+                kmax=kfl
+                fmax=frac
+            ELSE IF (frac < fmin) THEN
+                kmin=kfl
+                fmin=frac
+            END IF
+        END IF
+    END DO
+    IF (nfilw > 0) &
+        WRITE(*,"('         Weighted fraction  =',F8.2,' %')") 100.*sumrejw/sumallw
+    WRITE(*,"('         File with max. fraction ',I6,' :',F8.2,' %')") kmax, 100.*fmax
+    WRITE(*,"('         File with min. fraction ',I6,' :',F8.2,' %')") kmin, 100.*fmin
+
+END SUBROUTINE chkrej
 
 !> Interprete command line option, steering file.
 !!

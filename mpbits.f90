@@ -5,7 +5,7 @@
 !! \author Claus Kleinwort, DESY (maintenance and developement)
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2021 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2022 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -541,16 +541,13 @@ SUBROUTINE spbits(npgrp,nsparr,nsparc)               ! collect elements
     INTEGER(mpl) :: l
     INTEGER(mpl) :: ll
     INTEGER(mpl) :: l1
-    INTEGER(mpl) :: k8
     INTEGER(mpl) :: n1
     INTEGER(mpl) :: ndiff
     INTEGER(mpl) :: noffi
     INTEGER(mpl) :: noffj
     INTEGER(mpi) :: i
     INTEGER(mpi) :: j
-    INTEGER(mpi) :: j1
     INTEGER(mpi) :: jb
-    INTEGER(mpi) :: jn
     INTEGER(mpi) :: k
     INTEGER(mpi) :: m
     INTEGER(mpi) :: ichunk
@@ -563,7 +560,7 @@ SUBROUTINE spbits(npgrp,nsparr,nsparc)               ! collect elements
     DO jb=0,nspc-1
         ! parallelize row loop
         !$OMP  PARALLEL DO &
-        !$OMP  PRIVATE(I,N1,NOFFI,NOFFJ,L,M,KL,L1,NDIFF,K8,LAST,LL,J1,JN,J,NEXT) &
+        !$OMP  PRIVATE(I,N1,NOFFI,NOFFJ,L,M,KL,L1,NDIFF,LAST,LL,J,NEXT) &
         !$OMP  SCHEDULE(DYNAMIC,ICHUNK)
         DO i=1,n
             n1=i+jb*(n+1)
