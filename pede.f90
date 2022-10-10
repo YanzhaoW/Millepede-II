@@ -51,7 +51,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-11-03 \
+!!         git clone --depth 1 --branch V04-11-04 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -151,6 +151,7 @@
 !! * 220616: Cleanup, test programs to print LAPACK (library) configuration added to \c tools directory.
 !! * 220817: Cleanup, (rare) problem with construction of \ref ch-pargroup "parameter groups" fixed
 !!   (avoiding aborts with exit code 35).
+!! * 221010: Fix (uninitialsed values) and cleanup for internal silicon strip tracker example.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -289,8 +290,8 @@
 !! For unpacked storage the \ref ch-elim-const "elimination of constraints" is
 !! implemented with LAPACK (DGEQLF, DORMQL) as alternative.
 !!
-!! For positive definte matrices (elimination of constraints) a Cholesky factorization is used (DPPTRF/DPOTRF) and
-!! for infinite matrices (Lagrange multipliers for constraints) a Bunch-Kaufman factorization (DSPTRF/DSYTRF).
+!! For positive definite matrices (elimination of constraints) a Cholesky factorization is used (DPPTRF/DPOTRF) and
+!! for indefinite matrices (Lagrange multipliers for constraints) a Bunch-Kaufman factorization (DSPTRF/DSYTRF).
 !! With the option \ref cmd-lapackerr "LAPACKwitherrors" the inverse matrix is calculated from the
 !! factorization to provide parameter errors (DPPTRI/DPOTRI, DSPTRI/DSYTRI, potentially slow, single-threaded).
 !!
