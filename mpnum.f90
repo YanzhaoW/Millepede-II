@@ -110,9 +110,9 @@ SUBROUTINE sqminv(v,b,n,nrank,diag,next)   ! matrix inversion
     INTEGER(mpi) :: lk
     INTEGER(mpi) :: next0
 
+    INTEGER(mpi), INTENT(IN)                      :: n
     REAL(mpd), INTENT(IN OUT)         :: v((n*n+n)/2)
     REAL(mpd), INTENT(OUT)            :: b(n)
-    INTEGER(mpi), INTENT(IN)                      :: n
     INTEGER(mpi), INTENT(OUT)                     :: nrank
     REAL(mpd), INTENT(OUT)            :: diag(n)
     INTEGER(mpi), INTENT(OUT)                     :: next(n)
@@ -752,8 +752,8 @@ SUBROUTINE choldc(g,n)
     INTEGER(mpi) :: k
     INTEGER(mpi) :: kk
     
-    REAL(mpd), INTENT(IN OUT)         :: g((n*n+n)/2)
     INTEGER(mpi), INTENT(IN)                      :: n
+    REAL(mpd), INTENT(IN OUT)         :: g((n*n+n)/2)
 
     REAL(mpd) :: ratio
     !     ...
@@ -797,9 +797,9 @@ SUBROUTINE cholsl(g,x,n)
     INTEGER(mpi) :: k
     INTEGER(mpi) :: kk
     
+    INTEGER(mpi), INTENT(IN)                     :: n
     REAL(mpd), INTENT(IN)            :: g((n*n+n)/2)
     REAL(mpd), INTENT(IN OUT)        :: x(n)
-    INTEGER(mpi), INTENT(IN)                     :: n
 
     ii=0
     DO i=1,n
@@ -845,9 +845,9 @@ SUBROUTINE cholin(g,v,n)
     INTEGER(mpi) :: l
     INTEGER(mpi) :: m
 
+    INTEGER(mpi), INTENT(IN)                     :: n
     REAL(mpd), INTENT(IN)            :: g((n*n+n)/2)
     REAL(mpd), INTENT( OUT)          :: v((n*n+n)/2)
-    INTEGER(mpi), INTENT(IN)                     :: n
 
     ii=(n*n-n)/2
     DO i=n,1,-1
@@ -1355,11 +1355,11 @@ SUBROUTINE dbgax(a,x,y,m,n)
     INTEGER(mpi) :: ij
     INTEGER(mpi) :: j
 
+    INTEGER(mpi), INTENT(IN)                      :: m
+    INTEGER(mpi), INTENT(IN)                      :: n
     REAL(mpd), INTENT(IN)             :: a(n*m)
     REAL(mpd), INTENT(IN)             :: x(n)
     REAL(mpd), INTENT(OUT)            :: y(m)
-    INTEGER(mpi), INTENT(IN)                      :: m
-    INTEGER(mpi), INTENT(IN)                      :: n
 
     !     ...
     ij=0
@@ -1400,11 +1400,12 @@ SUBROUTINE dbavat(v,a,w,n,m,iopt)
     INTEGER(mpi) :: lk
     INTEGER(mpi) :: lkl
 
+    INTEGER(mpi), INTENT(IN)                      :: n
+    INTEGER(mpi), INTENT(IN)                      :: m
     REAL(mpd), INTENT(IN)             :: v((n*n+n)/2)
     REAL(mpd), INTENT(IN)             :: a(n*m)
     REAL(mpd), INTENT(INOUT)          :: w((m*m+m)/2)
-    INTEGER(mpi), INTENT(IN)                      :: n
-    INTEGER(mpi), INTENT(IN)                      :: m
+
     INTEGER(mpi), INTENT(IN)                      :: iopt
 
     REAL(mpd) :: cik
@@ -1480,12 +1481,12 @@ SUBROUTINE dbavats(v,a,is,w,n,m,iopt,sc)
     INTEGER(mpi) :: l
     INTEGER(mpi) :: lk
 
+    INTEGER(mpi), INTENT(IN)          :: n
+    INTEGER(mpi), INTENT(IN)          :: m
     REAL(mpd), INTENT(IN)             :: v((n*n+n)/2)
     REAL(mpd), INTENT(IN)             :: a(n*m)
     REAL(mpd), INTENT(INOUT)          :: w((m*m+m)/2)
     INTEGER(mpi), INTENT(IN)          :: is(2*n*m+n+m+1)
-    INTEGER(mpi), INTENT(IN)          :: n
-    INTEGER(mpi), INTENT(IN)          :: m
     INTEGER(mpi), INTENT(IN)          :: iopt
     INTEGER(mpi), INTENT(OUT)          :: sc(n)
 
@@ -1552,9 +1553,9 @@ SUBROUTINE dbmprv(lun,x,v,n)
     REAL(mps) :: err
 
     INTEGER(mpi), INTENT(IN)          :: lun
+    INTEGER(mpi), INTENT(IN)          :: n
     REAL(mpd), INTENT(IN) :: x(n)
     REAL(mpd), INTENT(IN) :: v((n*n+n)/2)
-    INTEGER(mpi), INTENT(IN)          :: n
 
     WRITE(lun,103)
     WRITE(lun,101)
@@ -1623,8 +1624,8 @@ SUBROUTINE dbprv(lun,v,n)
     INTEGER(mpi) :: k
 
     INTEGER(mpi), INTENT(IN)          :: lun
-    REAL(mpd), INTENT(IN) :: v((n*n+n)/2)
     INTEGER(mpi), INTENT(IN)          :: n
+    REAL(mpd), INTENT(IN) :: v((n*n+n)/2)
 
     WRITE(lun,101)
 
@@ -1665,8 +1666,8 @@ SUBROUTINE heapf(a,n)
     INTEGER(mpi) :: r
     REAL(mps) :: at    ! pivot key value
 
-    REAL(mps), INTENT(IN OUT) :: a(n)
     INTEGER(mpi), INTENT(IN)  :: n
+    REAL(mps), INTENT(IN OUT) :: a(n)
     !     ...
     IF(n <= 1) RETURN
     l=n/2+1
@@ -1726,8 +1727,8 @@ SUBROUTINE sort1k(a,n)
     INTEGER(mpi) :: a1    ! pivot key
     INTEGER(mpi) :: at    ! pivot key
 
-    INTEGER(mpi), INTENT(IN OUT) :: a(n)
     INTEGER(mpi), INTENT(IN)     :: n
+    INTEGER(mpi), INTENT(IN OUT) :: a(n)
     !     ...
     IF (n <= 0) RETURN
     maxlev=0
@@ -3131,9 +3132,9 @@ SUBROUTINE sqmibb(v,b,n,nbdr,nbnd,inv,nrank,vbnd,vbdr,aux,vbk,vzru,scdiag,scflag
     INTEGER(mpi) :: npri
     INTEGER(mpi) :: nrankb
 
+    INTEGER(mpi), INTENT(IN)                      :: n
     REAL(mpd), INTENT(IN OUT)         :: v((n*n+n)/2)
     REAL(mpd), INTENT(OUT)            :: b(n)
-    INTEGER(mpi), INTENT(IN)                      :: n
     INTEGER(mpi), INTENT(IN)                      :: nbdr
     INTEGER(mpi), INTENT(IN)                      :: nbnd
     INTEGER(mpi), INTENT(IN)                      :: inv
@@ -3387,9 +3388,9 @@ SUBROUTINE sqmibb2(v,b,n,nbdr,nbnd,inv,nrank,vbnd,vbdr,aux,vbk,vzru,scdiag,scfla
     INTEGER(mpi) :: npri
     INTEGER(mpi) :: nrankb
 
+    INTEGER(mpi), INTENT(IN)                      :: n
     REAL(mpd), INTENT(IN OUT)         :: v((n*n+n)/2)
     REAL(mpd), INTENT(OUT)            :: b(n)
-    INTEGER(mpi), INTENT(IN)                      :: n
     INTEGER(mpi), INTENT(IN)                      :: nbdr
     INTEGER(mpi), INTENT(IN)                      :: nbnd
     INTEGER(mpi), INTENT(IN)                      :: inv

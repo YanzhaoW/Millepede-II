@@ -63,6 +63,7 @@ MODULE mptest2
     INTEGER(mpi), PARAMETER :: nlyr=10            !< number of detector layers
     INTEGER(mpi), PARAMETER :: nmlyr=14           !< number of measurement layers
     INTEGER(mpi), PARAMETER :: nmx=10             !< number of modules in x direction
+    INTEGER(mpi), PARAMETER :: ncx=5              !< center (vertical/x) row (used in cons.)
     INTEGER(mpi), PARAMETER :: nmy=5              !< number of modules in y direction
     INTEGER(mpi), PARAMETER :: ntot=nlyr*nmx*nmy  !< total number of modules
     !     define detector geometry
@@ -143,7 +144,6 @@ SUBROUTINE mptst2(imodel)         ! generate test files
     INTEGER(mpi) :: nalc
     INTEGER(mpi) :: nbrl
     INTEGER(mpi) :: ncount
-    INTEGER(mpi) :: ncx
     INTEGER(mpi) :: nmxy
     INTEGER(mpi) :: nrecds
     INTEGER(mpi) :: nthits
@@ -289,7 +289,6 @@ SUBROUTINE mptst2(imodel)         ! generate test files
 
     ! constraints: fix center modules in first/last layer
 
-    ncx=(nmx+1)/2
     nmxy=nmx*nmy
     lunt=9
     one=1.0

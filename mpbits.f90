@@ -346,7 +346,7 @@ SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
         IF (iextnd > 0) THEN
 
             noffj=(i-1)*nspc
-            mm=INT(MOD(noffj,bs),mpi)
+            mm=INT(MOD(noffj,INT(bs,mpl)),mpi)
 
             last=0
             lrgn=0
@@ -605,7 +605,7 @@ SUBROUTINE spbits(npgrp,nsparr,nsparc)               ! collect elements
             ! extended storage ('2nd half' too) ?
             IF (iextnd > 0) THEN
                 noffj=(i-1)*nspc
-                m=INT(MOD(noffj,bs),mpi)+jb
+                m=INT(MOD(noffj,INT(bs,mpl)),mpi)+jb
                 last=0
                 ! remaining columns
                 DO j=i+1, n

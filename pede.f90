@@ -51,7 +51,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-11-04 \
+!!         git clone --depth 1 --branch V04-12-00 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -152,6 +152,9 @@
 !! * 220817: Cleanup, (rare) problem with construction of \ref ch-pargroup "parameter groups" fixed
 !!   (avoiding aborts with exit code 35).
 !! * 221010: Fix (uninitialsed values) and cleanup for internal silicon strip tracker example.
+!! * 221017: More code modernisation to comply the with fortran standard 2018
+!!   (<tt>gcc11 -std=f2018 -fall-intrinsics</tt>). Still some GNU fortran extensions are used:
+!!   <tt>etime, fdate, getarg, getenv, iargc, stat, system, time</tt>
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -724,6 +727,12 @@
 !! (command \ref cmd-scaleerrors) or to skip the internal iterations
 !! (command \ref cmd-subito or command line option \ref opt-s)
 !! to get *some* solution.
+!!
+!! \section ch-segfault Segmentation fault
+!! In case of segmentation faults the OpenMP stack size may be to small (default 8M?).
+!! Increased by defining the shell variable <tt>OMP_STACKSIZE</tt>:
+!!
+!!        export OMP_STACKSIZE=32M
 !!
 
 !> Millepede II main program \ref sssec-stalone "Pede".
@@ -2156,7 +2165,6 @@ SUBROUTINE peread(more)
     INTEGER(mpi) :: iact
     INTEGER(mpi) :: ierrc
     INTEGER(mpi) :: ierrf
-    INTEGER(mpi) :: inder
     INTEGER(mpi) :: ioffp
     INTEGER(mpi) :: ios
     INTEGER(mpi) :: ithr
@@ -2196,8 +2204,6 @@ SUBROUTINE peread(more)
     !$    INTEGER(mpi) :: OMP_GET_THREAD_NUM
     CHARACTER (LEN=7) :: cfile
     SAVE
-
-    inder(i)=readBufferDataI(i)
 
     DATA lprint/.TRUE./
     DATA floop/.TRUE./
@@ -2304,7 +2310,7 @@ SUBROUTINE peread(more)
                 xfd(jfile)=max(xfd(jfile),n)
                 IF(ithr == 1) THEN
                     CALL hmplnt(1,n)
-                    IF(inder(noff+1) /= 0) CALL hmpent(8,REAL(inder(noff+1),mps))
+                    IF(readBufferDataI(noff+1) /= 0) CALL hmpent(8,REAL(readBufferDataI(noff+1),mps))
                 END IF
             END IF
 
@@ -2497,8 +2503,6 @@ SUBROUTINE peprep(mode)
 
     INTEGER(mpi) :: ibuf
     INTEGER(mpi) :: ichunk
-    INTEGER(mpi) :: isfrst
-    INTEGER(mpi) :: islast
     INTEGER(mpi) :: ist
     INTEGER(mpi) :: itgbi
     INTEGER(mpi) :: j
@@ -2510,10 +2514,6 @@ SUBROUTINE peprep(mode)
     INTEGER(mpi) :: nbad
     INTEGER(mpi) :: nerr
     INTEGER(mpi) :: inone
-
-
-    isfrst(ibuf)=readBufferPointer(ibuf)+1
-    islast(ibuf)=readBufferDataI(readBufferPointer(ibuf))
 
     IF (mode > 0) THEN
 #ifdef __PGIC__
@@ -2528,8 +2528,8 @@ SUBROUTINE peprep(mode)
         !$OMP   SHARED(numReadBuffer,readBufferPointer,readBufferDataI,readBufferDataD,ICHUNK,iscerr,dscerr) &
         !$OMP   SCHEDULE(DYNAMIC,ICHUNK)
         DO ibuf=1,numReadBuffer ! buffer for current record
-            ist=isfrst(ibuf)
-            nst=islast(ibuf)
+            ist=readBufferPointer(ibuf)+1
+            nst=readBufferDataI(readBufferPointer(ibuf))
             DO ! loop over measurements
                 CALL isjajb(nst,ist,ja,jb,jsp)
                 IF(jb == 0) EXIT
@@ -2558,8 +2558,8 @@ SUBROUTINE peprep(mode)
                 nbad=nbad+1
                 IF(nbad >= maxbad) EXIT
             ELSE
-                ist=isfrst(ibuf)
-                nst=islast(ibuf)
+                ist=readBufferPointer(ibuf)+1
+                nst=readBufferDataI(readBufferPointer(ibuf))
                 DO ! loop over measurements
                     CALL isjajb(nst,ist,ja,jb,jsp)
                     IF(jb == 0) EXIT
@@ -2589,14 +2589,10 @@ SUBROUTINE pechk(ibuf, nerr)
     USE mpmod
 
     IMPLICIT NONE
-    REAL(mpr8) :: glder
     INTEGER(mpi) :: i
     INTEGER(mpi) :: is
     INTEGER(mpi) :: ist
-    INTEGER(mpi) :: inder
     INTEGER(mpi) :: ioff
-    INTEGER(mpi) :: isfrst
-    INTEGER(mpi) :: islast
     INTEGER(mpi) :: ja
     INTEGER(mpi) :: jb
     INTEGER(mpi) :: jsp
@@ -2607,13 +2603,9 @@ SUBROUTINE pechk(ibuf, nerr)
     INTEGER(mpi), INTENT(OUT)                     :: nerr
     SAVE
     !     ...
-    inder(i)=readBufferDataI(i)
-    glder(i)=readBufferDataD(i)
-    isfrst(ibuf)=readBufferPointer(ibuf)+1
-    islast(ibuf)=readBufferDataI(readBufferPointer(ibuf))
 
-    ist=isfrst(ibuf)
-    nst=islast(ibuf)
+    ist=readBufferPointer(ibuf)+1
+    nst=readBufferDataI(readBufferPointer(ibuf))
     nerr=0
     is=ist
     jsp=0
@@ -2623,22 +2615,22 @@ SUBROUTINE pechk(ibuf, nerr)
         inner1: DO
             is=is+1
             IF(is > nst) EXIT outer
-            IF(inder(is) == 0) EXIT inner1 ! found 1. marker
+            IF(readBufferDataI(is) == 0) EXIT inner1 ! found 1. marker
         END DO inner1
         ja=is
         inner2: DO
             is=is+1
             IF(is > nst) EXIT outer
-            IF(inder(is) == 0) EXIT inner2 ! found 2. marker
+            IF(readBufferDataI(is) == 0) EXIT inner2 ! found 2. marker
         END DO inner2
         jb=is        
-        IF(ja+1 == jb.AND.glder(jb) < 0.0_mpr8) THEN
+        IF(ja+1 == jb.AND.readBufferDataD(jb) < 0.0_mpr8) THEN
             !  special data
             jsp=jb ! pointer to special data
-            is=is+NINT(-glder(jb),mpi) ! skip NSP words
+            is=is+NINT(-readBufferDataD(jb),mpi) ! skip NSP words
             CYCLE outer
         END IF     
-        DO WHILE(inder(is+1) /= 0.AND.is < nst)
+        DO WHILE(readBufferDataI(is+1) /= 0.AND.is < nst)
             is=is+1
         END DO
     END DO outer
@@ -2676,8 +2668,6 @@ SUBROUTINE pepgrp
     INTEGER(mpi) :: iproc
     INTEGER(mpi) :: ioff
     INTEGER(mpi) :: ioffbi
-    INTEGER(mpi) :: isfrst
-    INTEGER(mpi) :: islast
     INTEGER(mpi) :: ist
     INTEGER(mpi) :: itgbi
     INTEGER(mpi) :: j
@@ -2689,9 +2679,6 @@ SUBROUTINE pepgrp
     INTEGER(mpi) :: inone
     INTEGER(mpl) :: length
     !$ INTEGER(mpi) :: OMP_GET_THREAD_NUM
-
-    isfrst(ibuf)=readBufferPointer(ibuf)+1
-    islast(ibuf)=readBufferDataI(readBufferPointer(ibuf))
 
     CALL useone ! make (INONE) usable
     globalParHeader(-2)=-1 ! set flag to inhibit further updates
@@ -2714,8 +2701,8 @@ SUBROUTINE pepgrp
     !$OMP   SHARED(numReadBuffer,readBufferPointer,readBufferDataI,readBufferDataD,backIndexUsage,globalParHeader,ICHUNK,MCOUNT) &
     !$OMP   SCHEDULE(DYNAMIC,ICHUNK)
     DO ibuf=1,numReadBuffer ! buffer for current record
-        ist=isfrst(ibuf)
-        nst=islast(ibuf)
+        ist=readBufferPointer(ibuf)+1
+        nst=readBufferDataI(readBufferPointer(ibuf))
         IF (mcount > 0) THEN
             ! count per record
             iproc=0
@@ -2764,8 +2751,8 @@ SUBROUTINE pepgrp
         
     !$POMP INST BEGIN(pepgrp)    
     DO ibuf=1,numReadBuffer ! buffer for current record
-        ist=isfrst(ibuf)
-        nst=islast(ibuf)
+        ist=readBufferPointer(ibuf)+1
+        nst=readBufferDataI(readBufferPointer(ibuf))
         IF (mcount == 0) THEN
             ! equation level
             DO ! loop over measurements
@@ -2896,17 +2883,17 @@ END SUBROUTINE pargrp
 !> Decode Millepede record.
 !!
 !! Get indices JA, JB, IS for next measurement within record:
-!! - Measurement is: <tt>GLDER(JA)</tt>
+!! - Measurement is: <tt>readBufferDataD(JA)</tt>
 !! - Local derivatives are:
-!!   <tt>(INDER(JA+J),GLDER(JA+J),J=1,JB-JA-1)</tt>  i.e. JB-JA-1 derivatives
-!! - Standard deviation is: <tt>GLDER(JB)</tt>
+!!   <tt>(readBufferDataI(JA+J),readBufferDataD(JA+J),J=1,JB-JA-1)</tt>  i.e. JB-JA-1 derivatives
+!! - Standard deviation is: <tt>readBufferDataD(JB)</tt>
 !! - Global derivatives are:
-!!   <tt>(INDER(JB+J),GLDER(JB+J),J=1,IS-JB)</tt>  i.e. IST-JB derivatives
+!!   <tt>(readBufferDataI(JB+J),readBufferDataD(JB+J),J=1,IS-JB)</tt>  i.e. IST-JB derivatives
 !!
 !! End_of_data is indicated by returned values JA=0 and JB=0
 !! Special data are ignored. At end_of_data the info to the
 !! special data is returned: IS = pointer to special data;
-!! number of words is <tt>NSP=-GLDER(IS)</tt>.
+!! number of words is <tt>NSP=-readBufferDataD(IS)</tt>.
 !!
 !! \param [in]     nst    index of last  word of record
 !! \param [in,out] is     index of last global derivative
@@ -2919,9 +2906,6 @@ SUBROUTINE isjajb(nst,is,ja,jb,jsp)
     USE mpmod
 
     IMPLICIT NONE
-    REAL(mpr8) :: glder
-    INTEGER(mpi) :: i
-    INTEGER(mpi) :: inder
 
     INTEGER(mpi), INTENT(IN)                      :: nst
     INTEGER(mpi), INTENT(IN OUT)                  :: is
@@ -2930,8 +2914,6 @@ SUBROUTINE isjajb(nst,is,ja,jb,jsp)
     INTEGER(mpi), INTENT(OUT)                     :: jsp
     SAVE
     !     ...
-    inder(i)=readBufferDataI(i)
-    glder(i)=readBufferDataD(i)
 
     jsp=0
     DO
@@ -2940,21 +2922,21 @@ SUBROUTINE isjajb(nst,is,ja,jb,jsp)
         IF(is >= nst) RETURN
         DO
             is=is+1
-            IF(inder(is) == 0) EXIT
+            IF(readBufferDataI(is) == 0) EXIT
         END DO
         ja=is
         DO
             is=is+1
-            IF(inder(is) == 0) EXIT
+            IF(readBufferDataI(is) == 0) EXIT
         END DO
         jb=is
-        IF(ja+1 == jb.AND.glder(jb) < 0.0_mpr8) THEN
+        IF(ja+1 == jb.AND.readBufferDataD(jb) < 0.0_mpr8) THEN
             !  special data
             jsp=jb ! pointer to special data
-            is=is+NINT(-glder(jb),mpi) ! skip NSP words
+            is=is+NINT(-readBufferDataD(jb),mpi) ! skip NSP words
             CYCLE
         END IF     
-        DO WHILE(inder(is+1) /= 0.AND.is < nst)
+        DO WHILE(readBufferDataI(is+1) /= 0.AND.is < nst)
             is=is+1
         END DO
         EXIT
@@ -2979,7 +2961,6 @@ SUBROUTINE loopn
     REAL(mps) :: elmt
     REAL(mpd) :: factrj
     REAL(mpd) :: factrk
-    REAL(mpr8) :: glder
     REAL(mps) :: peakd
     REAL(mps) :: peaki
     REAL(mps) :: ratae
@@ -2992,12 +2973,8 @@ SUBROUTINE loopn
     INTEGER(mpi) :: i
     INTEGER(mpi) :: ia
     INTEGER(mpi) :: ib
-    INTEGER(mpi) :: ibuf
-    INTEGER(mpi) :: inder
     INTEGER(mpi) :: ioffb
     INTEGER(mpi) :: ipr
-    INTEGER(mpi) :: isfrst
-    INTEGER(mpi) :: islast
     INTEGER(mpi) :: itgbi
     INTEGER(mpi) :: itgbij
     INTEGER(mpi) :: itgbik
@@ -3027,10 +3004,7 @@ SUBROUTINE loopn
     REAL(mpd)::sndf
     SAVE
     !     ...
-    isfrst(ibuf)=readBufferPointer(ibuf)+1
-    islast(ibuf)=readBufferDataI(readBufferPointer(ibuf))
-    inder(i)=readBufferDataI(i)
-    glder(i)=readBufferDataD(i)
+
     !     ----- book and reset ---------------------------------------------
     IF(nloopn == 0) THEN      ! first call
         lastit=-1
@@ -3822,7 +3796,6 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     REAL(mps) :: chndf
     REAL(mpd) :: chuber
     REAL(mpd) :: down
-    REAL(mpr8) :: glder
     REAL(mpd) :: pull
     REAL(mpd) :: r1
     REAL(mpd) :: r2
@@ -3851,14 +3824,12 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     INTEGER(mpi) :: ij
     INTEGER(mpi) :: ije
     INTEGER(mpi) :: ijn
-    INTEGER(mpi) :: ijsym
     INTEGER(mpi) :: ik
     INTEGER(mpi) :: ike
     INTEGER(mpi) :: il
     INTEGER(mpi) :: im
     INTEGER(mpi) :: imeas
     INTEGER(mpi) :: in
-    INTEGER(mpi) :: inder
     INTEGER(mpi) :: inv
     INTEGER(mpi) :: ioffb
     INTEGER(mpi) :: ioffc
@@ -3872,9 +3843,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     INTEGER(mpi) :: iproc
     INTEGER(mpi) :: irbin
     INTEGER(mpi) :: irow
-    INTEGER(mpi) :: isfrst
     INTEGER(mpi) :: isize
-    INTEGER(mpi) :: islast
     INTEGER(mpi) :: ist
     INTEGER(mpi) :: iter
     INTEGER(mpi) :: itgbi
@@ -3950,11 +3919,6 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     DATA cauchy/2.3849_mpd/ ! constant for Cauchy down-weighting
     SAVE chuber,cauchy
     !     ...
-    ijsym(i,j)=MIN(i,j)+(MAX(i,j)*MAX(i,j)-MAX(i,j))/2
-    isfrst(ibuf)=readBufferPointer(ibuf)+1
-    islast(ibuf)=readBufferDataI(readBufferPointer(ibuf))
-    inder(i)=readBufferDataI(i)
-    glder(i)=readBufferDataD(i)
 
     ichunk=MIN((numReadBuffer+mthrd-1)/mthrd/32+1,256)
     ! reset header, 3 words per thread:
@@ -3982,9 +3946,9 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     !$OMP   REDUCTION(MIN:NREC3) &
     !$OMP   SCHEDULE(DYNAMIC,ICHUNK)
     DO ibuf=1,numReadBuffer                       ! buffer for current record
-        nrc=readBufferDataI(isfrst(ibuf)-2)       ! record
-        kfl=NINT(readBufferDataD(isfrst(ibuf)-1),mpi) ! file
-        dw1=REAL(readBufferDataD(isfrst(ibuf)-2),mpd) ! weight
+        nrc=readBufferDataI(readBufferPointer(ibuf)-1)         ! record
+        kfl=NINT(readBufferDataD(readBufferPointer(ibuf)),mpi) ! file
+        dw1=REAL(readBufferDataD(readBufferPointer(ibuf)-1),mpd) ! weight
         dw2=SQRT(dw1)
   
         iproc=0
@@ -4033,23 +3997,23 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
   
         IF(lprnt) THEN
             imeas=0              ! local derivatives
-            ist=isfrst(ibuf)
-            nst=islast(ibuf)
+            ist=readBufferPointer(ibuf)+1
+            nst=readBufferDataI(readBufferPointer(ibuf))
             DO ! loop over measurements
                 CALL isjajb(nst,ist,ja,jb,jsp)
                 IF(ja == 0) EXIT
                 IF(imeas == 0) WRITE(1,1121)
                 imeas=imeas+1
-                WRITE(1,1122) imeas,glder(ja),glder(jb),  &
-                    (inder(ja+j),glder(ja+j),j=1,jb-ja-1)
+                WRITE(1,1122) imeas,readBufferDataD(ja),readBufferDataD(jb),  &
+                    (readBufferDataI(ja+j),readBufferDataD(ja+j),j=1,jb-ja-1)
             END DO
 1121        FORMAT(/'Measured value and local derivatives'/  &
                 '  i measured std_dev  index...derivative ...')
 1122        FORMAT(i3,2G12.4,3(i3,g12.4)/(27X,3(i3,g12.4)))
     
             imeas=0              ! global derivatives
-            ist=isfrst(ibuf)
-            nst=islast(ibuf)
+            ist=readBufferPointer(ibuf)+1
+            nst=readBufferDataI(readBufferPointer(ibuf))
             DO ! loop over measurements
                 CALL isjajb(nst,ist,ja,jb,jsp)
                 IF(ja == 0) EXIT
@@ -4057,11 +4021,11 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                 imeas=imeas+1
                 IF (jb < ist) THEN
                     IF(ist-jb > 2) THEN
-                        WRITE(1,1124) imeas,(globalParLabelIndex(1,inder(jb+j)),inder(jb+j),  &
-                            globalParLabelIndex(2,inder(jb+j)),glder(jb+j),j=1,ist-jb)
+                        WRITE(1,1124) imeas,(globalParLabelIndex(1,readBufferDataI(jb+j)),readBufferDataI(jb+j),  &
+                            globalParLabelIndex(2,readBufferDataI(jb+j)),readBufferDataD(jb+j),j=1,ist-jb)
                     ELSE
-                        WRITE(1,1125) imeas,(globalParLabelIndex(1,inder(jb+j)),inder(jb+j),  &
-                            globalParLabelIndex(2,inder(jb+j)),glder(jb+j),j=1,ist-jb)
+                        WRITE(1,1125) imeas,(globalParLabelIndex(1,readBufferDataI(jb+j)),readBufferDataI(jb+j),  &
+                            globalParLabelIndex(2,readBufferDataI(jb+j)),readBufferDataD(jb+j),j=1,ist-jb)
                     END IF
                 END IF
             END DO
@@ -4086,20 +4050,20 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
         nalc=0                         ! count number of local derivatives
         neq=0                          ! count number of equations
                     
-        ist=isfrst(ibuf)
-        nst=islast(ibuf)
+        ist=readBufferPointer(ibuf)+1
+        nst=readBufferDataI(readBufferPointer(ibuf))
         DO ! loop over measurements
             CALL isjajb(nst,ist,ja,jb,jsp)
             IF(ja == 0) EXIT
-            rmeas=REAL(glder(ja),mpd)     ! data
+            rmeas=REAL(readBufferDataD(ja),mpd)     ! data
             neq=neq+1                     ! count equation
             localEquations(1,ioffq+neq)=ja
             localEquations(2,ioffq+neq)=jb
             localEquations(3,ioffq+neq)=ist
             !         subtract global ... from measured value
             DO j=1,ist-jb                 ! global parameter loop
-                itgbi=inder(jb+j)            ! global parameter label
-                rmeas=rmeas-REAL(glder(jb+j),mpd)*globalParameter(itgbi) ! subtract   !!! reversed
+                itgbi=readBufferDataI(jb+j)            ! global parameter label
+                rmeas=rmeas-REAL(readBufferDataD(jb+j),mpd)*globalParameter(itgbi) ! subtract   !!! reversed
                 IF (icalcm == 1) THEN
                     ij=globalParLabelIndex(2,itgbi)         ! index of variable global parameter
                     IF(ij > 0) THEN
@@ -4113,11 +4077,11 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                 END IF
             END DO
             IF(lprnt) THEN
-                IF (jb < ist) WRITE(1,102) neq,glder(ja),rmeas,glder(jb)
+                IF (jb < ist) WRITE(1,102) neq,readBufferDataD(ja),rmeas,readBufferDataD(jb)
             END IF
             readBufferDataD(ja)=REAL(rmeas,mpr8)   ! global contribution subtracted
             DO j=1,jb-ja-1              ! local parameter loop
-                ij=inder(ja+j)
+                ij=readBufferDataI(ja+j)
                 nalc=MAX(nalc,ij)       ! number of local parameters
             END DO
         END DO
@@ -4212,8 +4176,8 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             DO ieq=1,neq! loop over measurements
                 ja=localEquations(1,ioffq+ieq)
                 jb=localEquations(2,ioffq+ieq)
-                rmeas=REAL(glder(ja),mpd)     ! data
-                rerr =REAL(glder(jb),mpd)     ! ... and the error
+                rmeas=REAL(readBufferDataD(ja),mpd)     ! data
+                rerr =REAL(readBufferDataD(jb),mpd)     ! ... and the error
                 wght =1.0_mpd/rerr**2         ! weight from error
                 nweig=nweig+1
                 resid=rmeas-localCorrections(ioffq+ieq)           ! subtract previous fit
@@ -4246,13 +4210,13 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
 104             FORMAT(i6,2X,2G12.4,' +-',g12.4,f7.2,1X,a3,f8.2)
     
                 DO j=1,jb-ja-1 ! normal equations, local parameter loop
-                    ij=inder(ja+j)          ! local parameter index J
-                    blvec(ij)=blvec(ij)+wght*rmeas*REAL(glder(ja+j),mpd)
+                    ij=readBufferDataI(ja+j)          ! local parameter index J
+                    blvec(ij)=blvec(ij)+wght*rmeas*REAL(readBufferDataD(ja+j),mpd)
                     DO k=1,j
-                        ik=inder(ja+k)         ! local parameter index K
-                        jk=ijsym(ij,ik)        ! index in symmetric matrix
+                        ik=readBufferDataI(ja+k)         ! local parameter index K
+                        jk=(ij*ij-ij)/2+ik        ! index in symmetric matrix
                         clmat(jk)=clmat(jk) &  ! force double precision
-                            +wght*REAL(glder(ja+j),mpd)*REAL(glder(ja+k),mpd)
+                            +wght*REAL(readBufferDataD(ja+j),mpd)*REAL(readBufferDataD(ja+k),mpd)
                         !           check for band matrix substructure
                         IF (iter == 1) THEN
                             id=IABS(ij-ik)+1
@@ -4350,13 +4314,13 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                 ja=localEquations(1,ioffq+ieq)
                 jb=localEquations(2,ioffq+ieq)
                 ist=localEquations(3,ioffq+ieq)
-                rmeas=REAL(glder(ja),mpd)     ! data (global contrib. subtracted)
-                rerr =REAL(glder(jb),mpd)     ! ... and the error
+                rmeas=REAL(readBufferDataD(ja),mpd)     ! data (global contrib. subtracted)
+                rerr =REAL(readBufferDataD(jb),mpd)     ! ... and the error
                 wght =1.0_mpd/rerr**2         ! weight from error
                 rmloc=0.0                     ! local fit result reset
                 DO j=1,jb-ja-1                ! local parameter loop
-                    ij=inder(ja+j)
-                    rmloc=rmloc+REAL(glder(ja+j),mpd)*blvec(ij) ! local fit result
+                    ij=readBufferDataI(ja+j)
+                    rmloc=rmloc+REAL(readBufferDataD(ja+j),mpd)*blvec(ij) ! local fit result
                 END DO
                 localCorrections(ioffq+ieq)=rmloc   ! save local fit result
                 rmeas=rmeas-rmloc             ! reduced to residual
@@ -4365,11 +4329,11 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                 IF(iter == 1.AND.inv > 0.AND.nloopn <= lfitnp) THEN
                     dvar=0.0_mpd
                     DO j=1,jb-ja-1
-                        ij=inder(ja+j)
+                        ij=readBufferDataI(ja+j)
                         DO k=1,jb-ja-1
-                            ik=inder(ja+k)
-                            jk=ijsym(ij,ik)
-                            dvar=dvar+clmat(jk)*REAL(glder(ja+j),mpd)*REAL(glder(ja+k),mpd)
+                            ik=readBufferDataI(ja+k)
+                            jk=(ij*ij-ij)/2+ik        ! index in symmetric matrix
+                            dvar=dvar+clmat(jk)*REAL(readBufferDataD(ja+j),mpd)*REAL(readBufferDataD(ja+k),mpd)
                         END DO
                     END DO
                     !          some variance left to define a pull?
@@ -4386,7 +4350,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                         !  monitoring
                         IF (imonit /= 0) THEN
                             IF (jb < ist) THEN
-                                ij=inder(jb+1) ! group by first global label
+                                ij=readBufferDataI(jb+1) ! group by first global label
                                 if (imonmd == 0) THEN
                                     irbin=MIN(measBins,max(1,INT(pull*rerr/measRes(ij)/measBinSize+0.5*REAL(measBins,mpd))))
                                 ELSE    
@@ -4433,7 +4397,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                     r2=resid/down
                     IF(resid < 0.0) r1=-r1
                     IF(resid < 0.0) r2=-r2
-                    WRITE(1,106) imeas,glder(ja),rmeas,rerr,r1,chast,r2
+                    WRITE(1,106) imeas,readBufferDataD(ja),rmeas,rerr,r1,chast,r2
                 END IF
 105             FORMAT(' index corrvalue    residuum          sigma',  &
                     '     nresid     cnresid')
@@ -4561,8 +4525,8 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             ja=localEquations(1,ioffq+ieq)
             jb=localEquations(2,ioffq+ieq)
             ist=localEquations(3,ioffq+ieq)    
-            rmeas=REAL(glder(ja),mpd)     ! data residual
-            rerr =REAL(glder(jb),mpd)     ! ... and the error
+            rmeas=REAL(readBufferDataD(ja),mpd)     ! data residual
+            rerr =REAL(readBufferDataD(jb),mpd)     ! ... and the error
             wght =1.0_mpd/rerr**2         ! weight from measurement error
             dchi2=wght*rmeas*rmeas        ! least-square contribution
     
@@ -4578,22 +4542,22 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             !         global-global matrix contribution: add directly to gg-matrix
     
             DO j=1,ist-jb
-                ivgbj=globalParLabelIndex(2,inder(jb+j))     ! variable-parameter index
+                ivgbj=globalParLabelIndex(2,readBufferDataI(jb+j))     ! variable-parameter index
                 IF(ivgbj > 0) THEN
                     globalVector(ioffb+ivgbj)=globalVector(ioffb+ivgbj)  &
-                        +dw1*wght*rmeas*REAL(glder(jb+j),mpd) ! vector  !!! reverse
+                        +dw1*wght*rmeas*REAL(readBufferDataD(jb+j),mpd) ! vector  !!! reverse
                     globalCounter(ioffb+ivgbj)=globalCounter(ioffb+ivgbj)+1    
                     IF(icalcm == 1) THEN
                         ije=backIndexUsage(ioffe+ivgbj)        ! get index of index, non-zero
                         DO k=1,j
-                            ivgbk=globalParLabelIndex(2,inder(jb+k))
+                            ivgbk=globalParLabelIndex(2,readBufferDataI(jb+k))
                             IF(ivgbk > 0) THEN
                                 ike=backIndexUsage(ioffe+ivgbk)        ! get index of index, non-zero
                                 ia=MAX(ije,ike)          ! larger
                                 ib=MIN(ije,ike)          ! smaller
                                 ij=ib+(ia*ia-ia)/2
                                 writeBufferUpdates(ioffd+ij)=writeBufferUpdates(ioffd+ij)  &
-                                    -dw1*wght*REAL(glder(jb+j),mpd)*REAL(glder(jb+k),mpd)
+                                    -dw1*wght*REAL(readBufferDataD(jb+j),mpd)*REAL(readBufferDataD(jb+k),mpd)
                             END IF
                         END DO
                     END IF
@@ -4604,13 +4568,14 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             !         global-local matrix contribution: accumulate rectangular matrix
             IF (icalcm /= 1) CYCLE
             DO j=1,ist-jb
-                ivgbj=globalParLabelIndex(2,inder(jb+j))           ! variable-parameter index
+                ivgbj=globalParLabelIndex(2,readBufferDataI(jb+j))           ! variable-parameter index
                 IF(ivgbj > 0) THEN
                     ije=backIndexUsage(ioffe+ivgbj)        ! get index of index, non-zero
                     DO k=1,jb-ja-1
-                        ik=inder(ja+k)           ! local index
+                        ik=readBufferDataI(ja+k)           ! local index
                         jk=ik+(ije-1)*nalc       ! matrix index
-                        localGlobalMatrix(jk)=localGlobalMatrix(jk)+dw2*wght*REAL(glder(jb+j),mpd)*REAL(glder(ja+k),mpd)
+                        localGlobalMatrix(jk)=localGlobalMatrix(jk)+ &
+                            dw2*wght*REAL(readBufferDataD(jb+j),mpd)*REAL(readBufferDataD(ja+k),mpd)
                         localGlobalMap(jk)=localGlobalMap(jk)+1
                     END DO
                 END IF
@@ -5589,15 +5554,15 @@ SUBROUTINE anasps
     IMPLICIT NONE
     INTEGER(mpi) :: ia
     INTEGER(mpi) :: ib
-    INTEGER(mpi) :: in
     INTEGER(mpi) :: ipg
     INTEGER(mpi) :: ir
     INTEGER(mpi) :: ispc
-    INTEGER(mpi) :: jn
     INTEGER(mpi) :: lj
     REAL(mps) :: avg
 
 
+    INTEGER(mpl) :: in
+    INTEGER(mpl) :: jn
     INTEGER(mpl) :: k
     INTEGER(mpl) :: kk
     INTEGER(mpl) :: ku
@@ -6609,9 +6574,6 @@ SUBROUTINE loop1i
     INTEGER(mpi) :: ibuf
     INTEGER(mpi) :: ij
     INTEGER(mpi) :: indab
-    INTEGER(mpi) :: inder
-    INTEGER(mpi) :: isfrst
-    INTEGER(mpi) :: islast
     INTEGER(mpi) :: ist
     INTEGER(mpi) :: j
     INTEGER(mpi) :: ja
@@ -6622,16 +6584,11 @@ SUBROUTINE loop1i
     INTEGER(mpi) :: nlow
     INTEGER(mpi) :: nst
     INTEGER(mpi) :: nwrd
-    REAL(mpr8) :: glder
 
     INTEGER(mpl) :: length
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: newCounter
     SAVE
 
-    isfrst(ibuf)=readBufferPointer(ibuf)+1
-    islast(ibuf)=readBufferDataI(readBufferPointer(ibuf))
-    inder(i)=readBufferDataI(i)
-    glder(i)=readBufferDataD(i)
     !     ...
     WRITE(lunlog,*) ' '
     WRITE(lunlog,*) 'LOOP1: iterating'
@@ -6659,8 +6616,8 @@ SUBROUTINE loop1i
         CALL peread(nr)  ! read records
         CALL peprep(1)  ! prepare records
         DO ibuf=1,numReadBuffer           ! buffer for current record        
-            ist=isfrst(ibuf)
-            nst=islast(ibuf)
+            ist=readBufferPointer(ibuf)+1
+            nst=readBufferDataI(readBufferPointer(ibuf))
             nwrd=nst-ist+1
             DO ! loop over measurements
                 CALL isjajb(nst,ist,ja,jb,jsp)
@@ -6668,13 +6625,13 @@ SUBROUTINE loop1i
                 IF(ja /= 0) THEN
                     nlow=0
                     DO j=1,ist-jb
-                        ij=inder(jb+j)                      ! index of global parameter
+                        ij=readBufferDataI(jb+j)                      ! index of global parameter
                         ij=globalParLabelIndex(2,ij)        ! change to variable parameter
                         IF(ij == -2) nlow=nlow+1            ! fixed by entries cut
                     END DO
                     IF(nlow == 0) THEN
                         DO j=1,ist-jb
-                            ij=inder(jb+j)                  ! index of global parameter
+                            ij=readBufferDataI(jb+j)                  ! index of global parameter
                             newCounter(ij)=newCounter(ij)+1 ! count again
                         END DO
                     ENDIF
@@ -6731,7 +6688,6 @@ SUBROUTINE loop2
     REAL(mps) :: fsum
     REAL(mps) :: gbc
     REAL(mps) :: gbu
-    REAL(mpr8) :: glder
     INTEGER(mpi) :: i
     INTEGER(mpi) :: ia
     INTEGER(mpi) :: ib
@@ -6746,13 +6702,10 @@ SUBROUTINE loop2
     INTEGER(mpi) :: ij
     INTEGER(mpi) :: ij1
     INTEGER(mpi) :: ijn
-    INTEGER(mpi) :: inder
     INTEGER(mpi) :: ioff
     INTEGER(mpi) :: ipoff
     INTEGER(mpi) :: iproc
     INTEGER(mpi) :: irecmm
-    INTEGER(mpi) :: isfrst
-    INTEGER(mpi) :: islast
     INTEGER(mpi) :: ist
     INTEGER(mpi) :: itgbi
     INTEGER(mpi) :: itgbij
@@ -6861,10 +6814,6 @@ SUBROUTINE loop2
 
     !$ INTEGER(mpi) :: OMP_GET_THREAD_NUM
 
-    isfrst(ibuf)=readBufferPointer(ibuf)+1
-    islast(ibuf)=readBufferDataI(readBufferPointer(ibuf))
-    inder(i)=readBufferDataI(i)
-    glder(i)=readBufferDataD(i)
     !     ...
     WRITE(lunlog,*) ' '
     WRITE(lunlog,*) 'LOOP2: starting'
@@ -7029,17 +6978,17 @@ SUBROUTINE loop2
         CALL peprep(1)  ! prepare records
         ioff=0
         DO ibuf=1,numReadBuffer           ! buffer for current record
-            nrec=readBufferDataI(isfrst(ibuf)-2)   ! record
+            nrec=readBufferDataI(readBufferPointer(ibuf)-1)   ! record
             !     Printout for DEBUG
             IF(nrec <= mdebug) THEN
                 nda=0
-                kfile=NINT(readBufferDataD(isfrst(ibuf)-1),mpi) ! file
-                wrec =REAL(readBufferDataD(isfrst(ibuf)-2),mps) ! weight
+                kfile=NINT(readBufferDataD(readBufferPointer(ibuf)),mpi)   ! file
+                wrec =REAL(readBufferDataD(readBufferPointer(ibuf)-1),mps) ! weight
                 WRITE(*,*) ' '
                 WRITE(*,*) 'Record number ',nrec,' from file ',kfile
                 IF (wgh /= 1.0) WRITE(*,*) '       weight ',wrec
-                ist=isfrst(ibuf)
-                nst=islast(ibuf)
+                ist=readBufferPointer(ibuf)+1
+                nst=readBufferDataI(readBufferPointer(ibuf))
                 DO ! loop over measurements
                     CALL isjajb(nst,ist,ja,jb,jsp)
                     IF(ja == 0) EXIT
@@ -7049,14 +6998,14 @@ SUBROUTINE loop2
                         CYCLE
                     END IF
                     WRITE(*,*) ' '
-                    WRITE(*,*) nda, ' Measured value =',glder(ja),' +- ',glder(jb)
+                    WRITE(*,*) nda, ' Measured value =',readBufferDataD(ja),' +- ',readBufferDataD(jb)
                     WRITE(*,*) 'Local derivatives:'
-                    WRITE(*,107) (inder(ja+j),glder(ja+j),j=1,jb-ja-1)
+                    WRITE(*,107) (readBufferDataI(ja+j),readBufferDataD(ja+j),j=1,jb-ja-1)
 107                 FORMAT(6(i3,g12.4))
                     IF (jb < ist) THEN
                         WRITE(*,*) 'Global derivatives:'
-                        WRITE(*,108) (globalParLabelIndex(1,inder(jb+j)),inder(jb+j),  &
-                            globalParLabelIndex(2,inder(jb+j)),glder(jb+j),j=1,ist-jb)
+                        WRITE(*,108) (globalParLabelIndex(1,readBufferDataI(jb+j)),readBufferDataI(jb+j),  &
+                            globalParLabelIndex(2,readBufferDataI(jb+j)),readBufferDataD(jb+j),j=1,ist-jb)
 108                     FORMAT(3I11,g12.4)
                     END IF
                     IF(nda == 1) THEN
@@ -7071,8 +7020,8 @@ SUBROUTINE loop2
             naeqn =0                     ! count number of equations
             icgrp =0                     ! count constraint groups
             maeqnf=naeqnf
-            ist=isfrst(ibuf)
-            nst=islast(ibuf)
+            ist=readBufferPointer(ibuf)+1
+            nst=readBufferDataI(readBufferPointer(ibuf))
             nwrd=nst-ist+1
             DO ! loop over measurements
                 CALL isjajb(nst,ist,ja,jb,jsp)
@@ -7084,19 +7033,19 @@ SUBROUTINE loop2
                         naeqng=naeqng+1
                         ! monitoring, group measurements, sum up entries and errors
                         IF (imonit /= 0) THEN
-                            rerr =REAL(glder(jb),mpd)     ! the error
-                            ij=inder(jb+1)               ! index of first global parameter, used to group measurements
+                            rerr =REAL(readBufferDataD(jb),mpd)     ! the error
+                            ij=readBufferDataI(jb+1)               ! index of first global parameter, used to group measurements
                             measIndex(ij)=measIndex(ij)+1
                             measRes(ij)=measRes(ij)+rerr
                         END IF
                     END IF    
                     nfixed=0
                     DO j=1,ist-jb
-                        ij=inder(jb+j)                     ! index of global parameter
+                        ij=readBufferDataI(jb+j)                     ! index of global parameter
                         ! check appearance 
                         IF (icheck > 1) THEN
                             joff = 5*(ij-1)
-                            kfile=NINT(readBufferDataD(isfrst(ibuf)-1),mpi) ! file
+                            kfile=NINT(readBufferDataD(readBufferPointer(ibuf)),mpi) ! file
                             IF (appearanceCounter(joff+1) == 0) THEN
                                 appearanceCounter(joff+1) = kfile
                                 appearanceCounter(joff+2) = nrec-ifd(kfile) ! (local) record number
@@ -7106,14 +7055,14 @@ SUBROUTINE loop2
                             appearanceCounter(joff+4) = nrec-ifd(kfile) ! (local) record number
                             ! count pairs
                             DO k=1,j
-                                CALL inbmap(globalParLabelIndex(4,ij),globalParLabelIndex(4,inder(jb+k)))
+                                CALL inbmap(globalParLabelIndex(4,ij),globalParLabelIndex(4,readBufferDataI(jb+k)))
                             END DO
                             jcgrp=globalParCons(ij)
                             ! correlate constraint groups with 'other' parameter groups
                             DO k=1,j
-                                kcgrp=globalParCons(inder(jb+k))
+                                kcgrp=globalParCons(readBufferDataI(jb+k))
                                 IF (kcgrp == jcgrp) CYCLE 
-                                IF (jcgrp > 0) CALL inbmap(ntpgrp+jcgrp,globalParLabelIndex(4,inder(jb+k)))
+                                IF (jcgrp > 0) CALL inbmap(ntpgrp+jcgrp,globalParLabelIndex(4,readBufferDataI(jb+k)))
                                 IF (kcgrp > 0) CALL inbmap(ntpgrp+kcgrp,globalParLabelIndex(4,ij))
                             END DO
                         END IF
@@ -7130,7 +7079,7 @@ SUBROUTINE loop2
                                     ! check appearance 
                                     IF (icheck > 1) THEN
                                         joff = 5*(ntgb+k-1)
-                                        kfile=NINT(readBufferDataD(isfrst(ibuf)-1),mpi) ! file
+                                        kfile=NINT(readBufferDataD(readBufferPointer(ibuf)),mpi) ! file
                                         IF (appearanceCounter(joff+1) == 0) THEN
                                             appearanceCounter(joff+1) = kfile
                                             appearanceCounter(joff+2) = nrec-ifd(kfile) ! (local) record number
@@ -7166,7 +7115,7 @@ SUBROUTINE loop2
   
                 IF(ja /= 0.AND.jb /= 0) THEN
                     DO j=1,jb-ja-1           ! local parameters
-                        ij=inder(ja+j)
+                        ij=readBufferDataI(ja+j)
                         nalcn=MAX(nalcn,ij)
                     END DO
                 END IF
@@ -7231,8 +7180,8 @@ SUBROUTINE loop2
             iproc=0
             !$ IPROC=OMP_GET_THREAD_NUM()         ! thread number
             DO ibuf=1,numReadBuffer
-                ist=isfrst(ibuf)
-                nst=islast(ibuf)
+                ist=readBufferPointer(ibuf)+1
+                nst=readBufferDataI(readBufferPointer(ibuf))
                 DO i=ist,nst                 ! store all combinations
                     iext=readBufferDataI(i)             ! variable global index
                     !$ IF (MOD(IEXT,MTHRD).EQ.IPROC) THEN  ! distinct rows per thread
@@ -10034,7 +9983,8 @@ SUBROUTINE chkrej
             IF (frac > fmax) THEN
                 kmax=kfl
                 fmax=frac
-            ELSE IF (frac < fmin) THEN
+            END IF
+            IF (frac < fmin) THEN
                 kmin=kfl
                 fmin=frac
             END IF
@@ -10042,8 +9992,10 @@ SUBROUTINE chkrej
     END DO
     IF (nfilw > 0) &
         WRITE(*,"('         Weighted fraction  =',F8.2,' %')") 100.*sumrejw/sumallw
-    WRITE(*,"('         File with max. fraction ',I6,' :',F8.2,' %')") kmax, 100.*fmax
-    WRITE(*,"('         File with min. fraction ',I6,' :',F8.2,' %')") kmin, 100.*fmin
+    IF (nfilb > 1) THEN
+        WRITE(*,"('         File with max. fraction ',I6,' :',F8.2,' %')") kmax, 100.*fmax
+        WRITE(*,"('         File with min. fraction ',I6,' :',F8.2,' %')") kmin, 100.*fmin
+    END IF
 
 END SUBROUTINE chkrej
 
@@ -10330,7 +10282,9 @@ SUBROUTINE filetc
             mfd(i)=vecFileInfo(2,i)
             ia=vecFileInfo(3,i)-1
             lfd(i)=vecFileInfo(4,i)-ia ! length file name
-            FORALL (k=1:lfd(i)) tfd(ioff+k)=text(ia+k:ia+k)
+            DO k=1,lfd(i)
+                tfd(ioff+k)=text(ia+k:ia+k)
+            END DO
             !            tfd(i)=text(vecFileInfo(3,i):vecFileInfo(4,i))      ! file name
             ioff=ioff+lfd(i)
             ofd(i)=1.0              ! option for file
@@ -10370,7 +10324,9 @@ SUBROUTINE filetc
     WRITE(8,*) 'Text and data files:'
     ioff=0
     DO i=1,nfiles
-        FORALL (k=1:lfd(i)) fname(k:k)=tfd(ioff+k)
+        DO k=1,lfd(i)
+            fname(k:k)=tfd(ioff+k)
+        END DO
         !        fname=tfd(i)(1:lfd(i))
         IF (mprint > 1) WRITE(*,103) i,bite(mfd(i)),fname(1:lfd(i))
         WRITE(8,103) i,bite(mfd(i)),fname(1:lfd(i))
@@ -10564,7 +10520,9 @@ SUBROUTINE filetx ! ---------------------------------------------------
             ia=ioff
             ioff=ioff+lfd(i)
             IF(mfd(i) /= 2) CYCLE ! exclude binary files
-            FORALL (k=1:lfd(i)) fname(k:k)=tfd(ia+k)
+            DO k=1,lfd(i)
+                fname(k:k)=tfd(ia+k)
+            END DO
             WRITE(*,*) 'File ',fname(1:lfd(i))
             IF (mprint > 1) WRITE(*,*) ' '
             OPEN(10,FILE=fname(1:lfd(i)),IOSTAT=ios,FORM='FORMATTED')
@@ -11798,7 +11756,9 @@ SUBROUTINE binopn(kfile, ithr, ierr)
     ! file name
     ioff=sfd(1,kfile)
     lfn=sfd(2,kfile)
-    FORALL (k=1:lfn) fname(k:k)=tfd(ioff+k)
+    DO k=1,lfn
+        fname(k:k)=tfd(ioff+k)
+    END DO
     !print *, " opening binary ", kfile, ithr, moddate, " : ", fname(1:lfn)
     ! open
     ios=0

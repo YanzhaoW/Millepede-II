@@ -4,7 +4,7 @@
 !! \author Claus Kleinwort, DESY, 2015 (Claus.Kleinwort@desy.de)
 !!
 !! \copyright
-!! Copyright (c) 2015-2021 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2015-2022 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -586,8 +586,8 @@ SUBROUTINE qlssq(aprod,A,s,roff,t)
     REAL(mpd) :: vtAv
     REAL(mpd), DIMENSION(:), ALLOCATABLE :: Av
 
-    REAL(mpd), INTENT(IN OUT)         :: A(s)
     INTEGER(mpl), INTENT(IN)          :: s
+    REAL(mpd), INTENT(IN OUT)         :: A(s)
     INTEGER(mpl), INTENT(IN)          :: roff(npar)
     LOGICAL, INTENT(IN)               :: t
 
@@ -728,8 +728,8 @@ SUBROUTINE qlpssq(aprod,B,m,t)
     REAL(mpd), DIMENSION(:), ALLOCATABLE :: matCoeff ! coefficients (d(A*v)=sum(c_i*v_i)) 
     INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: irangeCoeff !< range for non zero part
 
-    REAL(mpd), INTENT(IN OUT)         :: B(npar*m-(m*m-m)/2)
     INTEGER(mpi), INTENT(IN)          :: m
+    REAL(mpd), INTENT(IN OUT)         :: B(npar*m-(m*m-m)/2)
     LOGICAL, INTENT(IN)               :: t
 
     INTERFACE

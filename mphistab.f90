@@ -9,7 +9,7 @@
 !! \author Claus Kleinwort, DESY (maintenance and developement)
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2021 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2022 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -497,8 +497,8 @@ SUBROUTINE bintab(tab,n,xa,xb)
     REAL(mps) :: xx
     !     Bin limits XA and XB from TAB(N)
 
-    REAL(mps), INTENT(IN)                         :: tab(n)
     INTEGER(mpi), INTENT(IN)                      :: n
+    REAL(mps), INTENT(IN)                         :: tab(n)
     REAL(mps), INTENT(OUT)                        :: xa
     REAL(mps), INTENT(OUT)                        :: xb
 
@@ -607,8 +607,8 @@ SUBROUTINE kprint(lun,list,n)
     !     print integer array LIST(N)
 
     INTEGER(mpi), INTENT(IN OUT)                  :: lun
-    INTEGER(mpi), INTENT(IN)                      :: list(n)
     INTEGER(mpi), INTENT(IN)                      :: n
+    INTEGER(mpi), INTENT(IN)                      :: list(n)
     INTEGER(mpi) :: li(7)
     DATA li/2,3,4,6,8,9,12/ ! number of characters
     SAVE
@@ -1267,8 +1267,8 @@ SUBROUTINE rmesig(x,n,xloc,xsca)
     !     XLOC = median of X_i            (N values in array X(N))
     !     XCSA = median of | X_i - XLOC |, times 1.4826
 
-    REAL(mps), INTENT(IN OUT)                     :: x(n) ! input array, modified
     INTEGER(mpi), INTENT(IN)                      :: n
+    REAL(mps), INTENT(IN OUT)                     :: x(n) ! input array, modified
     REAL(mps), INTENT(OUT)                        :: xloc
     REAL(mps), INTENT(OUT)                        :: xsca
     SAVE

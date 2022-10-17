@@ -9,7 +9,7 @@
 !! \author Claus Kleinwort, DESY (maintenance and developement)
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2021 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2022 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -254,8 +254,8 @@ SUBROUTINE dchdec(w,n, aux)
     INTEGER(mpi) :: kk
     REAL(mpd) :: ratio
 
-    REAL(mpd), INTENT(IN OUT)           :: w((n*n+n)/2)
     INTEGER(mpi), INTENT(IN)            :: n
+    REAL(mpd), INTENT(IN OUT)           :: w((n*n+n)/2)
     REAL(mpd), INTENT(OUT)              :: aux(n)
 
     !     ...
@@ -302,8 +302,8 @@ SUBROUTINE dchslv(w,n,b, x)
     INTEGER(mpi) :: kk
     REAL(mpd) :: suma
 
-    REAL(mpd), INTENT(IN)               :: w((n*n+n)/2)
     INTEGER(mpi), INTENT(IN)            :: n
+    REAL(mpd), INTENT(IN)               :: w((n*n+n)/2)
     REAL(mpd), INTENT(IN)               :: b(n)
     REAL(mpd), INTENT(OUT)              :: x(n)
     
@@ -354,8 +354,8 @@ SUBROUTINE dchinv(w,n,v)
     INTEGER(mpi) :: m
     REAL(mpd) :: suma
 
-    REAL(mpd), INTENT(IN)               :: w((n*n+n)/2)
     INTEGER(mpi), INTENT(IN)            :: n
+    REAL(mpd), INTENT(IN)               :: w((n*n+n)/2)
     REAL(mpd), INTENT(OUT)              :: v((n*n+n)/2)
     
     ii=(n*n-n)/2
@@ -395,8 +395,8 @@ REAL(mps) FUNCTION condes(w,n,aux)
     REAL(mps) :: xlan
 
 
-    REAL(mpd), INTENT(IN)             :: w((n*n+n)/2)
     INTEGER(mpi), INTENT(IN)                      :: n
+    REAL(mpd), INTENT(IN)             :: w((n*n+n)/2)
     REAL(mpd), INTENT(IN OUT)         :: aux(n)
 
     REAL(mpd) :: suma,sumu,sums
@@ -466,9 +466,9 @@ SUBROUTINE dbcdec(w,mp1,n, aux)
     REAL(mpd) :: rxw
     !     M=MP1-1                                    N*M(M-1) dot operations
 
-    REAL(mpd), INTENT(IN OUT)           :: w(mp1,n)
-    INTEGER(mpi), INTENT(IN)            :: mp1
     INTEGER(mpi), INTENT(IN)            :: n
+    INTEGER(mpi), INTENT(IN)            :: mp1
+    REAL(mpd), INTENT(IN OUT)           :: w(mp1,n)
     REAL(mpd), INTENT(OUT)              :: aux(n)
     ! decompos
     !     ...
@@ -508,9 +508,9 @@ SUBROUTINE dbcslv(w,mp1,n,b, x)
     INTEGER(mpi) :: j
     REAL(mpd) :: rxw
 
-    REAL(mpd), INTENT(IN)               :: w(mp1,n)
-    INTEGER(mpi), INTENT(IN)            :: mp1
     INTEGER(mpi), INTENT(IN)            :: n
+    INTEGER(mpi), INTENT(IN)            :: mp1
+    REAL(mpd), INTENT(IN)               :: w(mp1,n)
     REAL(mpd), INTENT(IN)               :: b(n)
     REAL(mpd), INTENT(OUT)              :: x(n)
     !                                                N*(2M-1) dot operations
@@ -548,9 +548,9 @@ SUBROUTINE dbciel(w,mp1,n,v)
     INTEGER(mpi) :: k
     REAL(mpd) :: rxw
 
-    REAL(mpd), INTENT(IN)               :: w(mp1,n)
-    INTEGER(mpi), INTENT(IN)            :: mp1
     INTEGER(mpi), INTENT(IN)            :: n
+    INTEGER(mpi), INTENT(IN)            :: mp1
+    REAL(mpd), INTENT(IN)               :: w(mp1,n)
     REAL(mpd), INTENT(OUT)              :: v(mp1,n)
     !                                               N*M*(M-1) dot operations
     DO i=n,1,-1
@@ -582,9 +582,9 @@ SUBROUTINE dbcinb(w,mp1,n, vs)
     INTEGER(mpi) :: k
     REAL(mpd) :: rxw
 
-    REAL(mpd), INTENT(IN)               :: w(mp1,n)
-    INTEGER(mpi), INTENT(IN)            :: mp1
     INTEGER(mpi), INTENT(IN)            :: n
+    INTEGER(mpi), INTENT(IN)            :: mp1
+    REAL(mpd), INTENT(IN)               :: w(mp1,n)
     REAL(mpd), INTENT(OUT)              :: vs((n*n+n)/2)
     !                                             N*M*(M-1) dot operations
     DO i=n,1,-1
@@ -619,9 +619,9 @@ SUBROUTINE dbcinv(w,mp1,n, vs)
     INTEGER(mpi) :: k
     REAL(mpd) :: rxw
 
-    REAL(mpd), INTENT(IN)               :: w(mp1,n)
-    INTEGER(mpi), INTENT(IN)            :: mp1
     INTEGER(mpi), INTENT(IN)            :: n
+    INTEGER(mpi), INTENT(IN)            :: mp1
+    REAL(mpd), INTENT(IN)               :: w(mp1,n)
     REAL(mpd), INTENT(OUT)              :: vs((n*n+n)/2)
     !                                             N*N/2*(M-1) dot operations
     DO i=n,1,-1
@@ -654,9 +654,9 @@ SUBROUTINE dbcprv(w,mp1,n,b)
     REAL(mps) :: rho
 
 
-    REAL(mpd), INTENT(IN OUT)         :: w(mp1,n)
-    INTEGER(mpi), INTENT(IN)                      :: mp1
     INTEGER(mpi), INTENT(IN)                      :: n
+    INTEGER(mpi), INTENT(IN)                      :: mp1
+    REAL(mpd), INTENT(IN OUT)         :: w(mp1,n)
     REAL(mpd), INTENT(OUT)            :: b(n)
 
     REAL(mpd) :: ERR
@@ -698,9 +698,9 @@ SUBROUTINE dbcprb(w,mp1,n)
     INTEGER(mpi) :: j
 
 
-    REAL(mpd), INTENT(IN OUT)         :: w(mp1,n)
     INTEGER(mpi), INTENT(IN)                      :: mp1
     INTEGER(mpi), INTENT(IN)                      :: n
+    REAL(mpd), INTENT(IN OUT)         :: w(mp1,n)
 
 
     !     ...
@@ -747,8 +747,8 @@ SUBROUTINE db2dec(w,n, aux)
     INTEGER(mpi) :: i
     REAL(mpd) :: rxw
 
-    REAL(mpd), INTENT(IN OUT)           :: w(2,n)
     INTEGER(mpi), INTENT(IN OUT)        :: n
+    REAL(mpd), INTENT(IN OUT)           :: w(2,n)
     REAL(mpd), INTENT(OUT)              :: aux(n)
 
     DO i=1,n
@@ -787,8 +787,8 @@ SUBROUTINE db2slv(w,n,b, x)
     implicit none
     INTEGER(mpi) :: i
 
-    REAL(mpd), INTENT(IN)               :: w(2,n)
     INTEGER(mpi), INTENT(IN)            :: n
+    REAL(mpd), INTENT(IN)               :: w(2,n)
     REAL(mpd), INTENT(IN)               :: b(n)
     REAL(mpd), INTENT(OUT)              :: x(n)
     
@@ -818,8 +818,8 @@ SUBROUTINE db2iel(w,n, v)
     implicit none
     INTEGER(mpi) :: i
 
-    REAL(mpd), INTENT(IN)               :: w(2,n)
     INTEGER(mpi), INTENT(IN)            :: n
+    REAL(mpd), INTENT(IN)               :: w(2,n)
     REAL(mpd), INTENT(OUT)              :: v(2,n)
     
     !     The band elements of the inverse of W(original) are calculated,
@@ -869,8 +869,8 @@ SUBROUTINE db3dec(w,n, aux)      ! decomposition (M=2)
     INTEGER(mpi) :: i
     REAL(mpd) :: rxw
 
-    REAL(mpd), INTENT(IN OUT)           :: w(3,n)
     INTEGER(mpi), INTENT(IN OUT)        :: n
+    REAL(mpd), INTENT(IN OUT)           :: w(3,n)
     REAL(mpd), INTENT(OUT)              :: aux(n)
     ! decompos
 
@@ -923,8 +923,8 @@ SUBROUTINE db3slv(w,n,b, x)
     implicit none
     INTEGER(mpi) :: i
 
-    REAL(mpd), INTENT(IN)               :: w(3,n)
     INTEGER(mpi), INTENT(IN)            :: n
+    REAL(mpd), INTENT(IN)               :: w(3,n)
     REAL(mpd), INTENT(IN)               :: b(n)
     REAL(mpd), INTENT(OUT)              :: x(n)
     
@@ -956,8 +956,8 @@ SUBROUTINE db3iel(w,n, v)
     implicit none
     INTEGER(mpi) :: i
 
-    REAL(mpd), INTENT(IN)               :: w(3,n)
     INTEGER(mpi), INTENT(IN)            :: n
+    REAL(mpd), INTENT(IN)               :: w(3,n)
     REAL(mpd), INTENT(OUT)              :: v(3,n)
     
     !     The band elements of the inverse of W(original) are calculated,
@@ -1041,8 +1041,8 @@ SUBROUTINE dcfdec(w,n)
     USE mpdef
 
     IMPLICIT NONE
-    REAL(mpd), INTENT(OUT)            :: w((n*n+n)/2)
     INTEGER(mpi), INTENT(IN)                      :: n
+    REAL(mpd), INTENT(OUT)            :: w((n*n+n)/2)
     INTEGER(mpi) :: i,j,k
     REAL(mpd) :: epsm,gamm,xchi,beta,delta,theta
 
@@ -1093,9 +1093,9 @@ SUBROUTINE dbfdec(w,mp1,n)
     USE mpdef
 
     IMPLICIT NONE
-    REAL(mpd), INTENT(OUT)            :: w(mp1,n)
     INTEGER(mpi), INTENT(IN OUT)                  :: mp1
     INTEGER(mpi), INTENT(IN)                      :: n
+    REAL(mpd), INTENT(OUT)            :: w(mp1,n)
     INTEGER(mpi) :: i,j,k
     REAL(mpd) :: epsm,gamm,xchi,beta,delta,theta
 
