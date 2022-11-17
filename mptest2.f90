@@ -8,7 +8,7 @@
 !! \author Claus Kleinwort, DESY, 2009
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2015 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2022 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -42,7 +42,7 @@
 !!
 !! MC for simple silicon strip tracker:
 !! - 10 silicon detector layers
-!! - 50 modules per layer (1*2cm)
+!! - 50 modules per layer (2*4cm)
 !! - 10 cm spacing, no B-field
 !! - layers 1,4,7,10 have additional +/-5deg stereo modules
 !! - intrinsic resolution 20mu, 2% X0 per strip module

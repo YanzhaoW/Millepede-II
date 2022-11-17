@@ -51,7 +51,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-12-00 \
+!!         git clone --depth 1 --branch V04-12-01 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -178,6 +178,8 @@
 !!
 !! \subpage troubleshooting_page
 !!
+!! \subpage test_brlf_page "Example"
+!!
 !! \section Contact
 !!
 !! For information exchange the **Millepede** mailing list
@@ -199,8 +201,8 @@
 !! 4. A new fast track-fit algorithm based on broken lines, V. Blobel,
 !!    NIM A, 566 (2006), pp. 14-17,
 !!    [doi:10.1016/j.nima.2006.05.156](http://dx.doi.org/10.1016/j.nima.2006.05.156)
-!! 5. Millepede 2009, V. Blobel, [Contribution]
-!!    (https://indico.cern.ch/conferenceOtherViews.py?view=standard&confId=50502)
+!! 5. Millepede 2009, V. Blobel,
+!!    [Contribution](https://indico.cern.ch/conferenceOtherViews.py?view=standard&confId=50502)
 !!    to the 3rd LHC Detector Alignment Workshop, June 15 - 16 2009, CERN
 !! 6. General Broken Lines as advanced track fitting method, C. Kleinwort,
 !!    NIM A, 673 (2012), pp. 107-110,
@@ -225,6 +227,41 @@
 !! Major changes with respect to the \ref draftman_page "draft manual".
 !! \tableofcontents
 !!
+!! \section ch-entries-ext Extended entries cut
+!! The \ref cmd-entries "entries" cut has now three arguments:
+!! 1. \ref mpmod::mreqenf "mreqenf": Minimum required (number of) \ref an-entries "entries"
+!!    in binary files for global parameters to be *variable*.
+!! 2. \ref mpmod::mreqena "mreqena": Minimum required (number of) entries
+!!    (with record/track) \ref localfit-rejection "accepted" after the local (track) fit for
+!!    variable global parameters. Due to the tigthening of the \ref cmd-chisqcut "chisqcut" during
+!!    the internal pede iterations the number of *accepted* entries can get far lower than the
+!!    number of entries in the binary files(&ge; **mreqenf**). If the number of entries gets lower
+!!    than the number of variable global parameters determined from the related measurements
+!!    there will be no more proper solution (for this part of the global linear equation
+!!    system). Therefore *severe* warnings are issued
+!!    in case the number of accepted entries is below **mreqena** for any variable
+!!    global parameter in any iteration.
+!!    As the gobal matrix is usually constructed only in the first iteration it probably will
+!!    not get singular in this case, but the solutions for the affected parameters are not
+!!    independent anymore.
+!! 3. **iarg3** (\ref mpmod::iteren "iteren"=mreqenf*iarg3): Iteration of entries cut.
+!!    It can be problematic if different global parameters related to the same measurements
+!!    get different (number of) entries. If some are below and some are above **mreqenf**
+!!    some are fixed and some are variable which may not make sense. An example is the
+!!    rigid body alignment of a planar silicon pixel sensor in the local (uvw) system. For the
+!!    two indendent measurements (in u and v) the corresponding alignment offsets (du, dv)
+!!    appear each only for *one* measurement. The offset perpendicular to the sensor plane (dw)
+!!    and the rotations affect *both* measurement. Therefore the offsets (du, dv) have a factor
+!!    two smaller number of entries as the other four. To handle this situation the entries cut
+!!    (on the binary files) can be iterated: If in a measurement some global parameters are fixed
+!!    (due to entries < **mreqenf**) for the other parameters the cut value is increased by
+!!    the constant factor **iarg3**.
+!!    For the axample above a factor two would be appropriate (all six parameters fixed now).
+!!
+!!    Another option to avoid this problem is to not count the entries on the level of equations
+!!    (measurements) but on the level of records (tracks): \ref cmd-countrecords "countrecords"
+!!
+!!    A third option is to produce the binary files without zero supression (of global derivatives).
 !! \section ch-methods Solution methods
 !! The following methods to obtain the solution \f$\Vek{x}\f$ from a
 !! linear equation system \f$\Vek{A}\cdot\Vek{x}=\Vek{b}\f$ are implemented:
@@ -324,6 +361,10 @@
 !! (except by diagonalization). The number of threads is set by the command
 !! \ref cmd-threads.
 !!
+!! The OpenMP environment can be displayed with:
+!!
+!!       export OMP_DISPLAY_ENV=TRUE
+!!
 !! \b Caching. The records are read in blocks into a *read cache* and processed from
 !! there in parallel, each record by a single thread. For the filling of the global
 !! matrix the (zero-compressed) update matrices (\f$\Vek{\D C}_1+\Vek{\D C}_2\f$ from
@@ -412,8 +453,8 @@
 !! 2. More checks: Command '\ref cmd-checkinput 2' or command line option '\ref opt-C'
 !!
 !!   Additionally to standard output:
-!!   - For each **sorted** constraint the index by appearance (in text file with number
-!!     of first line (empty lines not counted)) and first and last global label.
+!!   - For each **sorted** constraint the index by appearance (in text file) with number
+!!     of first line and first and last global label.
 !!   - For each constraint group the number of constraints and the rank of the corresponding
 !!     block of the product matrix. Must be equal!
 !!
@@ -422,7 +463,7 @@
 !!     (first file and record number, last file and record number and number of files)
 !!     and number of paired global parameters (appearing together).
 !!   - For each constraint group the label ranges of (not contributing) paired global parameters.
-!!   - For each constraint group the appearance statistics (using the constributing global labels).
+!!   - For each constraint group the appearance statistics (using the contributing global labels).
 !!
 
 !> \page option_page List of options and commands
@@ -710,7 +751,7 @@
 !! non linear (e.g. curvature or rotations). Therefore pede usually
 !! ends with *warnings* (exit code 1).
 !!
-!! In case of problems with the linear equation system (e.g. to few measurements,
+!! In case of problems with the linear equation system (e.g. too few measurements,
 !! linear dependent constraints or global matrix not positive definite) pede
 !! still tries to get a solution and ends with *severe warnings*
 !! (exit code 2). The solution is very probable not reliable and should be
@@ -740,7 +781,7 @@ PROGRAM mptwo
     USE mpmod
     USE mpdalc
     USE mptest1, ONLY: nplan,del,dvd
-    USE mptest2, ONLY: nlyr,nmx,nmy,sdevx,sdevy
+    USE mptest2, ONLY: nlyr,nmx,nmy,sdevx,sdevy,ntot
 
     IMPLICIT NONE
     REAL(mps) :: andf
@@ -772,7 +813,6 @@ PROGRAM mptwo
     INTEGER(mpi) :: nmxy
     INTEGER(mpi) :: nrc
     INTEGER(mpi) :: nsecnd
-    INTEGER(mpi) :: ntot
     INTEGER(mpi) :: ntsec
 
     CHARACTER (LEN=24) :: chdate
@@ -1014,14 +1054,16 @@ PROGRAM mptwo
 143     FORMAT(6X,a28,f9.6,3X,a5,f9.6)
         WRITE(*,*) ' '
         WRITE(*,*) ' '
-        WRITE(*,*) '    I '
-        WRITE(*,*) '   --- '
+        WRITE(*,*) '    I     label   simulated    fitted      diff'
+        WRITE(*,*) '   -------------------------------------------- '
         DO i=1,100
-            WRITE(*,102) i,-del(i),globalParameter(i),-del(i)-globalParameter(i),  &
-                -dvd(i),globalParameter(100+i),-dvd(i)-globalParameter(100+i)
+            WRITE(*,102) i,globalParLabelIndex(1,i),-del(i),globalParameter(i),-del(i)-globalParameter(i)
             diff=REAL(-del(i)-globalParameter(i),mps)
             CALL hmpent( 9,diff)
-            diff=REAL(-dvd(i)-globalParameter(100+i),mps)
+        END DO
+        DO i=101,200
+            WRITE(*,102) i,globalParLabelIndex(1,i),-dvd(i-100),globalParameter(i),-dvd(i-100)-globalParameter(i)
+            diff=REAL(-dvd(i-100)-globalParameter(i),mps)
             CALL hmpent(10,diff)
         END DO
         IF(nhistp /= 0) THEN
@@ -1095,8 +1137,8 @@ PROGRAM mptwo
         END IF
         WRITE(*,*) ' '
         WRITE(*,*) ' '
-        WRITE(*,*) '    I '
-        WRITE(*,*) '   --- '
+        WRITE(*,*) '    I     label   simulated    fitted      diff'
+        WRITE(*,*) '   -------------------------------------------- '
         ix=0
         iy=ntot
         DO i=1,nlyr
@@ -1104,7 +1146,7 @@ PROGRAM mptwo
                 ix=ix+1
                 diff=REAL(-sdevx((i-1)*nmxy+k)-globalParameter(ix),mps)
                 CALL hmpent( 9,diff)
-                WRITE(*,102) ix,-sdevx((i-1)*nmxy+k),globalParameter(ix),-diff
+                WRITE(*,102) ix,globalParLabelIndex(1,ix),-sdevx((i-1)*nmxy+k),globalParameter(ix),-diff
             END DO
         END DO
         DO i=1,nlyr
@@ -1113,7 +1155,7 @@ PROGRAM mptwo
                     iy=iy+1
                     diff=REAL(-sdevy((i-1)*nmxy+k)-globalParameter(iy),mps)
                     CALL hmpent(10,diff)
-                    WRITE(*,102) iy,-sdevy((i-1)*nmxy+k),globalParameter(iy),-diff
+                    WRITE(*,102) iy,globalParLabelIndex(1,iy),-sdevy((i-1)*nmxy+k),globalParameter(iy),-diff
                 END DO
             END IF
         END DO
@@ -1183,7 +1225,7 @@ PROGRAM mptwo
     WRITE(*,105) gbu
     WRITE(*,*) ' '
 
-102 FORMAT(2X,i4,2X,3F10.5,2X,3F10.5)
+102 FORMAT(2X,i4,i10,2X,3F10.5)
 103 FORMAT(' Times [in sec] for     text processing',f12.3/  &
         '                                  LOOP1',f12.3/  &
         '                                  LOOP2',f12.3/  &
@@ -1490,13 +1532,13 @@ SUBROUTINE prpcon
     lastlen=0
     nvar=-1
     i=0
-    last=-1
+    last=0
     itype=0
     !        find next constraint header and count nr of constraints
     DO WHILE(i < lenConstraints)
         i=i+1
         label=listConstraints(i)%label
-        IF(last == 0.AND.label < 0) THEN
+        IF(last < 0.AND.label < 0) THEN
             IF (ncgb > 0 .AND. icheck>0) WRITE(*,113) ncgb, newlen-lastlen-3, nvar
             IF (nvar == 0) ncgbe=ncgbe+1
             IF (nvar == 0 .AND. iskpec > 0) THEN
@@ -1603,7 +1645,7 @@ SUBROUTINE prpcon
             END IF    
             i=i+1
             IF(i > lenConstraints) EXIT
-            IF(listConstraints(i)%label == 0) EXIT
+            IF(listConstraints(i)%label < 0) EXIT
         END DO
     END DO
     
@@ -1645,7 +1687,7 @@ SUBROUTINE prpcon
                 IF (icgrp > 0) EXIT
                 i=i+1
                 IF(i > lenConstraints) EXIT
-                IF(listConstraints(i)%label == 0) EXIT
+                IF(listConstraints(i)%label < 0) EXIT
             END DO        
             IF (icgrp == 0) THEN
                 ! new block
@@ -1669,7 +1711,7 @@ SUBROUTINE prpcon
             END IF    
             i=i+1
             IF(i > lenConstraints) EXIT
-            IF(listConstraints(i)%label == 0) EXIT
+            IF(listConstraints(i)%label < 0) EXIT
         END DO
     END DO
 
@@ -1722,6 +1764,13 @@ SUBROUTINE prpcon
     mszprd=0
     isblck=1
     ilast=0
+    IF (icheck > 0) THEN
+        WRITE(*,*)
+        IF (icheck > 1) &
+            WRITE(*,*) ' Cons. sorted       index file: index, first line first label  last label'
+        WRITE(*,*) ' Cons. group        index first cons.  last cons. first label  last label'
+        WRITE(*,*) ' Cons. block        index first group  last group first label  last label'
+    END IF
     DO icgrp=1,ncgrp 
         IF  (icheck > 1) THEN
             DO jcgb=matConsGroups(1,icgrp),matConsGroups(1,icgrp+1)-1
@@ -1732,7 +1781,7 @@ SUBROUTINE prpcon
                 ELSE
                     labelf=0; labell=0
                 END IF
-                WRITE(*,*) ' Cons. sorted', jcgb, icgb, vecConsStart(icgb), labelf, labell
+                WRITE(*,*) ' Cons. sorted', jcgb, icgb, -listConstraints(vecConsStart(icgb))%label, labelf, labell
             END DO
         END IF 
         IF (icheck > 0) THEN
@@ -3241,7 +3290,7 @@ SUBROUTINE loopn
         DO
             i=i+1
             IF(i > lenMeasurements) EXIT
-            IF(listMeasurements(i)%label == 0) EXIT
+            IF(listMeasurements(i)%label < 0) EXIT
         END DO
         ib=i-1
 
@@ -4865,7 +4914,7 @@ SUBROUTINE prtglo
         lowstat = .False.
         IF(ivgbi > 0) THEN
             icount=globalCounter(ivgbi) ! used in last iteration
-            lowstat = (icount < mreqena) ! to few accepted entries
+            lowstat = (icount < mreqena) ! too few accepted entries
             dpa=REAL(globalParameter(itgbi)-globalParStart(itgbi),mps)       ! difference
             IF(ALLOCATED(workspaceDiag)) THEN ! provide parameter errors?
                 gmati=globalMatD(globalRowOffsets(ivgbi)+ivgbi)
@@ -5060,9 +5109,9 @@ SUBROUTINE prtstat
     END DO
     ! appearance statistics
     IF (icheck > 1) THEN
-        WRITE(lup,*) '! '
-        WRITE(lup,*) '! Appearance statistics '
-        WRITE(lup,*) '!      Label  First file and record  Last file and record   #files  #paired-par'
+        WRITE(lup,*) '!.'
+        WRITE(lup,*) '!.Appearance statistics '
+        WRITE(lup,*) '!.     Label  First file and record  Last file and record   #files  #paired-par'
         DO itgbi=1,ntgb
             itpgrp=globalParLabelIndex(4,itgbi)
             IF (itpgrp > 0) THEN
@@ -5131,9 +5180,9 @@ SUBROUTINE prtstat
             END IF
         END DO
         IF (icheck > 1) THEN
-            WRITE(lup,*) '* '
-            WRITE(lup,*) '* Appearance statistics '
-            WRITE(lup,*) '*      Group  First file and record  Last file and record   #files'
+            WRITE(lup,*) '*.'
+            WRITE(lup,*) '*.Appearance statistics '
+            WRITE(lup,*) '*.     Group  First file and record  Last file and record   #files'
             DO icgrp=1, ncgrp
                 WRITE(lup,115) icgrp, (appearanceCounter((ntgb+icgrp)*5+k), k=-4,0)
             END DO
@@ -7281,7 +7330,7 @@ SUBROUTINE loop2
             DO
                 i=i+1
                 IF(i > lenMeasurements) EXIT
-                IF(listMeasurements(i)%label == 0) EXIT
+                IF(listMeasurements(i)%label < 0) EXIT
             END DO
             ib=i-1
   
@@ -7314,7 +7363,7 @@ SUBROUTINE loop2
             DO
                 i=i+1
                 IF(i > lenMeasurements) EXIT
-                IF(listMeasurements(i)%label == 0) EXIT
+                IF(listMeasurements(i)%label < 0) EXIT
             END DO
             ib=i-1
             ij1=nvgb
@@ -9857,14 +9906,14 @@ SUBROUTINE xloopn                !
         IF(nxlow /= 0) THEN
             WRITE(*,199) ' '
             WRITE(*,*) '        Possible rank defects =',nxlow, ' for global matrix'
-            WRITE(*,*) '        (to few accepted entries)'
+            WRITE(*,*) '        (too few accepted entries)'
             WRITE(*,*) '        => please check mille data and ENTRIES cut'
         END IF
             
         IF(nalow /= 0) THEN
             WRITE(*,199) ' '
             WRITE(*,*) '        Possible bad elements =',nalow, ' in global vector'
-            WRITE(*,*) '        (to few accepted entries)'
+            WRITE(*,*) '        (toos few accepted entries)'
             IF(ipcntr > 0) WRITE(*,*) '        (indicated in millepede.res by counts<0)'
             WRITE(*,*) '        => please check mille data and ENTRIES cut'
         END IF
@@ -10453,7 +10502,7 @@ END SUBROUTINE filetc
 !!
 !! Constraint data, format:
 !!
-!!       1  0                 ! constraint header of four words:
+!!       1  -line_number      ! constraint header of four words:
 !!       2  right-hand-side   ! 0 and -1 ...
 !!       3  -1; -2            ! ... indicate (weighting) ...
 !!       4  sigma             ! ... header
@@ -10467,7 +10516,7 @@ END SUBROUTINE filetc
 !!
 !! Measured data, format:
 !!
-!!       1  0                 ! constraint header of four words:
+!!       1  -line_number      ! constraint header of four words:
 !!       2  right-hand-side   ! 0 and -1 ...
 !!       3  -1                ! ... indicate ...
 !!       4  sigma             ! ... header
@@ -11392,7 +11441,7 @@ SUBROUTINE intext(text,nline)
         ELSE IF(lkey == 3) THEN         ! constraint
             !            WRITE(*,*) 'Keyword is constraint!',NUMS,' numerical data'
             IF(nums >= 1.AND.nums <= 2) THEN ! start constraint
-                lpvs=0   ! r = r.h.s. value
+                lpvs=-nline   ! r = r.h.s. value
                 CALL addItem(lenConstraints,listConstraints,lpvs,dnum(1))
                 lpvs=-1                    ! constraint
                 IF(iwcons > 0) lpvs=-2     ! weighted constraint
@@ -11408,7 +11457,7 @@ SUBROUTINE intext(text,nline)
         ELSE IF(lkey == 4) THEN         ! measurement
             IF(nums == 2) THEN ! start measurement
                 numMeasurements=numMeasurements+1
-                lpvs=0   ! r = r.h.s. value
+                lpvs=-nline   ! r = r.h.s. value
                 CALL addItem(lenMeasurements,listMeasurements,lpvs,dnum(1))
                 lpvs=-1  ! sigma
                 CALL addItem(lenMeasurements,listMeasurements,lpvs,dnum(2))
