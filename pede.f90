@@ -155,11 +155,14 @@
 !! * 221017: More code modernisation to comply the with fortran standard 2018
 !!   (<tt>gcc11 -std=f2018 -fall-intrinsics</tt>). Still some GNU fortran extensions are used:
 !!   <tt>etime, fdate, getarg, getenv, iargc, stat, system, time</tt>
+!! * 221122: Cleanup and documentation/exercises for \ref test_brlf_page "example"
+!!   (internal test case -t=BRLF).
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
-!! * \c readMilleBinary.py: Python script to read binary files and print
+!! * \c readMilleBinary.py: Python2 script to read binary files and print
 !!   records in text form.
+!! * \c compareResults.py: Python2 script to compare result files (<tt>millepede.res</tt>).
 !! * \c readPedeHists.C: ROOT script to read and convert the **Millepede**
 !!   histogram file <tt>millepede.his</tt>.
 !! * \c lapack: Test programs to print LAPACK (library) configuration (MKL, OpenBLAS).
