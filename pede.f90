@@ -51,7 +51,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-12-01 \
+!!         git clone --depth 1 --branch V04-12-02 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -157,6 +157,8 @@
 !!   <tt>etime, fdate, getarg, getenv, iargc, stat, system, time</tt>
 !! * 221122: Cleanup and documentation/exercises for \ref test_brlf_page "example"
 !!   (internal test case -t=BRLF).
+!! * 221212: Force \ref ch-checkinput "check input mode" (2) in case of *empty* constraints
+!!   (no variable parameters). No solution will be calculated.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -712,6 +714,7 @@
 !!    + **02**   Ended with severe warnings (insufficient measurements)
 !!    + **03**   Ended with severe warnings (bad global matrix)
 !!    + **04**   Ended with severe warnings (bad binary file(s))
+!!    + **05**   Ended without solution (empty constraints)
 !!    + **10**   Aborted, no steering file
 !!    + **11**   Aborted, open error for steering file
 !!    + **12**   Aborted, second text file in command line
@@ -778,6 +781,9 @@
 !!
 !!        export OMP_STACKSIZE=32M
 !!
+!! For further debugging one should add the compiler options
+!! \"<tt>-g -fcheck=all -fbacktrace</tt>\"
+!! to the \c F_FLAGS in the \c Makefile and recompile.
 
 !> Millepede II main program \ref sssec-stalone "Pede".
 PROGRAM mptwo
@@ -961,7 +967,11 @@ PROGRAM mptwo
 
     IF(icheck > 0) THEN
         CALL prtstat
-        CALL peend(0,'Ended normally')
+        IF (ncgbe < 0) THEN
+            CALL peend(5,'Ended without solution (empty constraints)')
+        ELSE
+            CALL peend(0,'Ended normally')
+        END IF
         GOTO 99 ! only checking input
     END IF
 
@@ -1586,6 +1596,15 @@ SUBROUTINE prpcon
             ncgb=ncgb-ncgbe
         ELSE
             WRITE(*,*) 'PRPCON:',ncgbe,' empty constraints detected, to be fixed !!!'
+            WRITE(*,*) '       (use option "skipemptycons" to skip those)'
+            IF (icheck == 0) THEN
+                icheck=2     ! switch to '-C'
+                ncgbe=-ncgbe ! indicate that
+                WRITE(*,*)
+                WRITE(*,*) '!!!   Switch to "-C" (checking input only), no calculation of a solution   !!!'
+                WRITE(8,*) '!!!   Switch to "-C" (checking input only), no calculation of a solution   !!!'
+                WRITE(*,*)
+            END IF
         END IF
     END IF
     IF (ncgbw == 0) THEN
@@ -1719,7 +1738,7 @@ SUBROUTINE prpcon
     END DO
 
     ! dummy groups for empty constraints
-    IF (ncgbe > 0) THEN
+    IF (ncgbe /= 0) THEN
         icgrp=ncgrp
         DO jcgb=ncgb,1,-1 
             IF (matConsGroupIndex(1,jcgb) > 0) CYCLE
@@ -1781,21 +1800,23 @@ SUBROUTINE prpcon
                 IF (matConsSort(2,jcgb) >= matConsSort(1,jcgb)) THEN
                     labelf=globalParLabelIndex(1,globalParVarToTotal(matConsSort(1,jcgb)))
                     labell=globalParLabelIndex(1,globalParVarToTotal(matConsSort(2,jcgb)))
+                    WRITE(*,*) ' Cons. sorted', jcgb, icgb, -listConstraints(vecConsStart(icgb))%label, labelf, labell
                 ELSE
-                    labelf=0; labell=0
+                    WRITE(*,*) ' Cons. sorted', jcgb, icgb, -listConstraints(vecConsStart(icgb))%label, &
+                        '         ! empty !'
                 END IF
-                WRITE(*,*) ' Cons. sorted', jcgb, icgb, -listConstraints(vecConsStart(icgb))%label, labelf, labell
             END DO
         END IF 
         IF (icheck > 0) THEN
             IF (matConsGroups(3,icgrp) >= matConsGroups(2,icgrp)) THEN 
                 labelf=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(2,icgrp)))
                 labell=globalParLabelIndex(1,globalParVarToTotal(matConsGroups(3,icgrp)))
+                WRITE(*,*) ' Cons. group ', icgrp, matConsGroups(1,icgrp), &
+                    matConsGroups(1,icgrp+1)-1, labelf, labell
             ELSE
-                labelf=0; labell=0
+                WRITE(*,*) ' Cons. group ', icgrp, matConsGroups(1,icgrp), &
+                    matConsGroups(1,icgrp+1)-1
             END IF
-            WRITE(*,*) ' Cons. group ', icgrp, matConsGroups(1,icgrp), &
-                matConsGroups(1,icgrp+1)-1, labelf, labell
         ENDIF
         ! combine into non overlapping blocks
         ilast=max(ilast, matConsGroups(3,icgrp))
@@ -1834,10 +1855,10 @@ SUBROUTINE prpcon
                 IF (ilast >= ifrst) THEN
                     labelf=globalParLabelIndex(1,globalParVarToTotal(ifrst))
                     labell=globalParLabelIndex(1,globalParVarToTotal(ilast))
+                    WRITE(*,*) ' Cons. block ', ncblck, isblck, icgrp, labelf, labell
                 ELSE
-                    labelf=0; labell=0
+                    WRITE(*,*) ' Cons. block ', ncblck, isblck, icgrp
                 END IF
-                WRITE(*,*) ' Cons. block ', ncblck, isblck, icgrp, labelf, labell
             ENDIF
             ! reset for new block
             isblck=icgrp+1
@@ -7757,11 +7778,38 @@ SUBROUTINE loop2
 
     WRITE(lunlog,*) 'LOOP2: ending'
     WRITE(lunlog,*) ' '
+    ! warnings from check input mode
+    IF (icheck > 0) THEN
+        IF (ncgbe /= 0) THEN
+            WRITE(*,199) ' '
+            WRITE(*,199) ' '
+            WRITE(*,199) 'WarningWarningWarningWarningWarningWarningWarningWarningWar'
+            WRITE(*,199) 'arningWarningWarningWarningWarningWarningWarningWarningWarn'
+            WRITE(*,199) 'rningWarningWarningWarningWarningWarningWarningWarningWarni'
+            WRITE(*,199) 'ningWarningWarningWarningWarningWarningWarningWarningWarnin'
+            WRITE(*,199) 'ingWarningWarningWarningWarningWarningWarningWarningWarning'
+            WRITE(*,199) 'ngWarningWarningWarningWarningWarningWarningWarningWarningW'
+            WRITE(*,199) 'gWarningWarningWarningWarningWarningWarningWarningWarningWa'
+            WRITE(*,199) ' '
+            WRITE(*,*) '        Number of empty constraints =',ABS(ncgbe), ', should be 0'
+            WRITE(*,*) '        => please check constraint definition, mille data'
+            WRITE(*,199) ' '
+            WRITE(*,199) 'WarningWarningWarningWarningWarningWarningWarningWarningWar'
+            WRITE(*,199) 'arningWarningWarningWarningWarningWarningWarningWarningWarn'
+            WRITE(*,199) 'rningWarningWarningWarningWarningWarningWarningWarningWarni'
+            WRITE(*,199) 'ningWarningWarningWarningWarningWarningWarningWarningWarnin'
+            WRITE(*,199) 'ingWarningWarningWarningWarningWarningWarningWarningWarning'
+            WRITE(*,199) 'ngWarningWarningWarningWarningWarningWarningWarningWarningW'
+            WRITE(*,199) 'gWarningWarningWarningWarningWarningWarningWarningWarningWa'
+            WRITE(*,199) ' '
+        END IF
+    END IF
     CALL mend
 101 FORMAT(1X,a8,' =',i10,' = ',a)
 102 FORMAT(22X,a)
 103 FORMAT(1X,a,g12.4)
 106 FORMAT(i6,2(3X,f9.3,f12.1,3X))
+199 FORMAT(7X,a)
 END SUBROUTINE loop2
 
 !> Monitor input residuals.
@@ -7820,34 +7868,39 @@ SUBROUTINE monres
                 isuml(j)=isuml(j-1)+measHists(ioff+j)
             END DO
             nent=isuml(measBins)
-            ! get median (for location)
-            DO j=2,measBins
-                IF (2*isuml(j) > nent) EXIT
-            END DO
-            imed=j
-            amed=REAL(j,mps)
-            IF (isuml(j) > isuml(j-1)) amed=amed+REAL(nent-2*isuml(j-1),mps)/REAL(2*isuml(j)-2*isuml(j-1),mps)
-            amed=REAL(measBinSize,mps)*(amed-REAL(measBins/2,mps))
-            ! sum up differences
-            isums = 0
-            DO j=imed,measBins
-                k=j-imed+1
-                isums(k)=isums(k)+measHists(ioff+j)
-            END DO
-            DO j=imed-1,1,-1
-                k=imed-j
-                isums(k)=isums(k)+measHists(ioff+j)
-            END DO
-            DO j=2, measBins
-                isums(j)=isums(j)+isums(j-1)
-            END DO
-            ! get median (for scale)
-            DO j=2,measBins
-                IF (2*isums(j) > nent) EXIT
-            END DO
-            amad=REAL(j-1,mps)
-            IF (isums(j) > isums(j-1)) amad=amad+REAL(nent-2*isums(j-1),mps)/REAL(2*isums(j)-2*isums(j-1),mps)
-            amad=REAL(measBinSize,mps)*amad
+            IF (nent > 0) THEN
+                ! get median (for location)
+                DO j=2,measBins
+                    IF (2*isuml(j) > nent) EXIT
+                END DO
+                imed=j
+                amed=REAL(j,mps)
+                IF (isuml(j) > isuml(j-1)) amed=amed+REAL(nent-2*isuml(j-1),mps)/REAL(2*isuml(j)-2*isuml(j-1),mps)
+                amed=REAL(measBinSize,mps)*(amed-REAL(measBins/2,mps))
+                ! sum up differences
+                isums = 0
+                DO j=imed,measBins
+                    k=j-imed+1
+                    isums(k)=isums(k)+measHists(ioff+j)
+                END DO
+                DO j=imed-1,1,-1
+                    k=imed-j
+                    isums(k)=isums(k)+measHists(ioff+j)
+                END DO
+                DO j=2, measBins
+                    isums(j)=isums(j)+isums(j-1)
+                END DO
+                ! get median (for scale)
+                DO j=2,measBins
+                    IF (2*isums(j) > nent) EXIT
+                END DO
+                amad=REAL(j-1,mps)
+                IF (isums(j) > isums(j-1)) amad=amad+REAL(nent-2*isums(j-1),mps)/REAL(2*isums(j)-2*isums(j-1),mps)
+                amad=REAL(measBinSize,mps)*amad
+            ELSE
+                amed=0.0
+                amad=0.0
+            END IF
             ij=globalParLabelIndex(1,i)
             WRITE(lunmon,110) nloopn, ij, nent, amed, amad*1.4826, REAL(measRes(i),mps)
             !
