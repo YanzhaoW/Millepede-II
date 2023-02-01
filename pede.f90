@@ -9,7 +9,7 @@
 !! \author Claus Kleinwort, DESY (maintenance and developement)
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2022 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2023 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -36,6 +36,8 @@
 !! alignment parameters. The method, called Millepede, to solve the linear least
 !! squares problem with a simultaneous fit of all global and local parameters,
 !! irrespectively of the number of local parameters, is described in the draft manual.
+!! (Correlated measurements need to be transformed into independent measurements
+!! by diagonalization of their covariance matrix.)
 !!
 !! The Millepede method and the initial implementation has been
 !! developed by [V. Blobel](http://www.desy.de/~blobel) from he University of Hamburg.
@@ -51,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-12-02 \
+!!         git clone --depth 1 --branch V04-12-03 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -157,8 +159,9 @@
 !!   <tt>etime, fdate, getarg, getenv, iargc, stat, system, time</tt>
 !! * 221122: Cleanup and documentation/exercises for \ref test_brlf_page "example"
 !!   (internal test case -t=BRLF).
-!! * 221212: Force \ref ch-checkinput "check input mode" (2) in case of *empty* constraints
+!! * 221212: Force \ref ch-checkinput "check input mode" (2) in case of accepted *empty* constraints
 !!   (no variable parameters). No solution will be calculated.
+!! * 230201: Fix global parameter errors for solution by diagonalization using elimination of constraints.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -8860,7 +8863,15 @@ SUBROUTINE mdiags
 
     !use elimination for constraints ?
     IF(nfgb < nvgb) THEN
-        IF(icalcm == 1) CALL qlssq(avprds,globalMatD,size(globalMatD,kind=mpl),globalRowOffsets,.true.) ! Q^t*A*Q
+        IF(icalcm == 1) THEN
+            ! monitor progress
+            IF(monpg1 > 0) THEN
+                WRITE(lunlog,*) 'Shrinkage of global matrix (A->Q^t*A*Q)'
+                CALL monini(lunlog,monpg1,monpg2)
+            END IF
+            CALL qlssq(avprds,globalMatD,size(globalMatD,kind=mpl),globalRowOffsets,.true.) ! Q^t*A*Q
+            IF(monpg1 > 0) CALL monend()
+        ENDIF
         ! solve L^t*y=d by backward substitution
         CALL qlbsub(vecConsResiduals,vecConsSolution)
         ! transform, reduce rhs
@@ -9760,6 +9771,9 @@ SUBROUTINE xloopn                !
     IF (imonit > 0 .AND. btest(imonit,1)) CALL monres
     IF (lunmon > 0) CLOSE(UNIT=lunmon)
     
+    ! construct inverse from diagonalization
+    IF(metsol == 2) CALL zdiags
+
     IF(ALLOCATED(workspaceDiag)) THEN ! provide parameter errors?
 #ifdef LAPACK64
         IF (metsol >= 7) THEN
@@ -9999,7 +10013,7 @@ SUBROUTINE xloopn                !
     IF(metsol == 1) THEN
 
     ELSE IF(metsol == 2) THEN
-        CALL zdiags
+        ! CALL zdiags moved up (before qlssq)
     ELSE IF(metsol == 3) THEN
         ! decomposition - nothing foreseen yet
     ELSE IF(metsol == 4 .OR. metsol == 5) THEN
