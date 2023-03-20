@@ -1,4 +1,4 @@
-#!/usr/bin32/python
+#!/usr/bin/env python
 
 ## \file
 # Read millepede binary file and print records
