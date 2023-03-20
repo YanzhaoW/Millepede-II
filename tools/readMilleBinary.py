@@ -58,8 +58,6 @@ from __future__ import print_function
 import sys
 import array
 
-PY3 = sys.version_info[0] == 3
-
 # CLI module distributed with Python
 import argparse
 # packing/unpacking structured binary data with Python
@@ -75,6 +73,8 @@ parser.add_argument('-s','--skip-records', type=int, default=0,
                     help='number of records (tracks) to skip before starting to print')
 parser.add_argument('--min-val', type=float,
                     help='minimum value to print derivatives')
+parser.add_argument('--quiet', action='store_true',
+                    help='do not print any information to terminal')
 
 arg = parser.parse_args()
 
@@ -82,12 +82,6 @@ fname = arg.filename
 mrec = arg.num_records
 skiprec = arg.skip_records
 minval = arg.min_val
-
-## Integer format 
-intfmt = 'i'  # SL5, gcc-4
-#intfmt = 'l' # SL4, gcc-3
-#
-# ## C. Kleinwort - DESY ########################
 
 # the argument parser makes sure the user provides one of the elements 
 #   in the choices list, so if we get here, we can assume that arg.type
@@ -100,11 +94,10 @@ elif arg.type == 'fortran' :
 else :
     # need to auto-detect
     f = open(fname, "rb")
-    len2 = array.array(intfmt)
-    len2.fromfile(f, 2)
+    header_words = struct.unpack('ii', f.read(8))
     f.close()
     Cfiles = 1 # C
-    if len2[0] == 4*(len2[1]+1): 
+    if header_words[0] == 4*(header_words[1]+1): 
         Cfiles = 0 # Fortran
         print("Detected Fortran binary file")
 
@@ -112,15 +105,62 @@ else :
 # read file
 f = open(fname, "rb")
 
+def unpack(typechar, number = 1) :
+    """unpack a certain number of the input type
+
+    We read from the file stored in the variable `f`.
+
+    Raises
+    ------
+    EOFError
+        if there is no data returned when the read is done
+    ValueError
+        if data is returned but the length does not match
+        the amount of data requested
+
+    Arguments
+    ---------
+    typechar : str
+        single-character name of type to unpack: 'i', 'f', or 'd'
+    number : int, optional
+        number of that type to unpack, default one 
+
+    Returns
+    -------
+    array of input length and type, filled with data unpacked
+    from file
+    """
+    # 'i' and 'f' are 4 bytes, 'd' is 8 bytes
+    bytesper = 4
+    if typechar == 'd' :
+        bytesper = 8
+
+    total_bytes = bytesper*number
+    bin_data = f.read(total_bytes)
+    if len(bin_data) != total_bytes :
+        if len(bin_data) == 0 :
+            raise EOFError()
+        else :
+            raise ValueError('Requested %d bytes but only got %d from the file.' % (total_bytes, len(bin_data)))
+
+    # struct knows that 'i' is 4 bytes, 'f' is 4 bytes, and 'd' is 8 bytes
+    # https://docs.python.org/2.7/library/struct.html#format-characters
+    return struct.unpack(typechar*number, bin_data)
+
 nrec = 0
 try:
     while (nrec < mrec + skiprec) or (mrec < 0):
 # read 1 record
         nr = 0
         if (Cfiles == 0):
-            lenf = struct.unpack(intfmt, f.read(4))
+            lenf = struct.unpack('i', f.read(4))
 
-        length = struct.unpack(intfmt, f.read(4))
+        try :
+            length = unpack('i')
+        except EOFError:
+            # EOF is allowed on first word of format,
+            #   that would mean we are done reading
+            break
 
         # using bit-shifting instead of division since
         #   integer-division was promoted to its own operator
@@ -129,23 +169,27 @@ try:
         nr = abs(length[0] >> 1)
         nrec += 1
 
-        floattype, floatbytes = 'f', 4
+        floattype = 'f'
         if length[0] < 0 :
-            floattype, floatbytes = 'd', 8
+            floattype = 'd'
 
-        glder = struct.unpack(floattype*nr, f.read(floatbytes*nr))
-        inder = struct.unpack(intfmt*nr, f.read(4*nr))
+        # read read nr floats and then nr integers
+        glder = unpack(floattype, nr)
+        inder = unpack('i', nr)
 
         if (Cfiles == 0):
-            lenf = struct.unpack(intfmt, f.read(4))
+            lenf = unpack('i')
 
         if (nrec <= skiprec):  # must be after last fromfile
+            continue
+
+        if arg.quiet :
             continue
 
         print(" === NR ", nrec, length[0] / 2)
 
         # no details, only header
-        if (mrec < -1):
+        if mrec < -1 :
             continue
 
         i = 0
@@ -204,10 +248,12 @@ try:
                 print(" global ", val)
 
 except EOFError:
-    print()
     if (nr > 0):
         print(" >>> error: end of file before end of record", nrec)
-    else:
-        print(" end of file after", nrec, "records")
+        sys.exit(1)
+except ValueError as e :
+    print(" >>> error: unable to unpack values before end of record", nrec, *(e.args))
+    sys.exit(2)
 
+print(" end of file after", nrec, "records")
 f.close()
