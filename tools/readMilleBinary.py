@@ -217,7 +217,7 @@ try:
         print(" === NR ", nrec, length[0] / 2)
 
         # no details, only header
-        if arg.num_records < -1 :
+        if arg.num_records < 0 :
             continue
 
         i = 0
