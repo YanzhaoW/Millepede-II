@@ -60,7 +60,10 @@ import array
 
 PY3 = sys.version_info[0] == 3
 
+# CLI module distributed with Python
 import argparse
+# packing/unpacking structured binary data with Python
+import struct
 
 parser = argparse.ArgumentParser(description = 'read a mille binary file and print its data')
 parser.add_argument('--type', choices = ['c','fortran','autodetect'], default='autodetect',
@@ -105,6 +108,7 @@ else :
         Cfiles = 0 # Fortran
         print("Detected Fortran binary file")
 
+
 # read file
 f = open(fname, "rb")
 
@@ -114,26 +118,26 @@ try:
 # read 1 record
         nr = 0
         if (Cfiles == 0):
-            lenf = array.array(intfmt)
-            lenf.fromfile(f, 1)
+            lenf = struct.unpack(intfmt, f.read(4))
 
-        length = array.array(intfmt)
-        length.fromfile(f, 1)
-        nr = abs(length[0] / 2)
+        length = struct.unpack(intfmt, f.read(4))
+
+        # using bit-shifting instead of division since
+        #   integer-division was promoted to its own operator
+        #   in Python3, luckily shifting by 1 is the same as
+        #   integer division by 2
+        nr = abs(length[0] >> 1)
         nrec += 1
 
-        if length[0] > 0:
-            glder = array.array('f')
-        else:
-            glder = array.array('d')
-        glder.fromfile(f, nr)
+        floattype, floatbytes = 'f', 4
+        if length[0] < 0 :
+            floattype, floatbytes = 'd', 8
 
-        inder = array.array(intfmt)
-        inder.fromfile(f, nr)
+        glder = struct.unpack(floattype*nr, f.read(floatbytes*nr))
+        inder = struct.unpack(intfmt*nr, f.read(4*nr))
 
         if (Cfiles == 0):
-            lenf = array.array(intfmt)
-            lenf.fromfile(f, 1)
+            lenf = struct.unpack(intfmt, f.read(4))
 
         if (nrec <= skiprec):  # must be after last fromfile
             continue
