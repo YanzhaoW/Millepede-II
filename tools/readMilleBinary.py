@@ -88,11 +88,6 @@ parser.add_argument('--quiet', action='store_true',
 
 arg = parser.parse_args()
 
-fname = arg.filename
-mrec = arg.num_records
-skiprec = arg.skip_records
-minval = arg.min_val
-
 # the argument parser makes sure the user provides one of the elements 
 #   in the choices list, so if we get here, we can assume that arg.type
 #   is one of them.
@@ -103,7 +98,7 @@ elif arg.type == 'fortran' :
     CFiles = 0
 else :
     # need to auto-detect
-    f = open(fname, "rb")
+    f = open(arg.filename, "rb")
     header_words = struct.unpack('ii', f.read(8))
     f.close()
     Cfiles = 1 # C
@@ -113,7 +108,7 @@ else :
 
 
 # read file
-f = open(fname, "rb")
+f = open(arg.filename, "rb")
 
 def unpack(typechar, number = 1) :
     """unpack a certain number of the input type
@@ -159,7 +154,7 @@ def unpack(typechar, number = 1) :
 
 nrec = 0
 try:
-    while (nrec < mrec + skiprec) or (mrec < 0):
+    while (nrec < arg.num_records + arg.skip_records) or (arg.num_records < 0):
 # read 1 record
         nr = 0
         if (Cfiles == 0):
@@ -190,7 +185,7 @@ try:
         if (Cfiles == 0):
             lenf = unpack('i')
 
-        if (nrec <= skiprec):  # must be after last fromfile
+        if (nrec <= arg.skip_records):  # must be after last fromfile
             continue
 
         if arg.quiet :
@@ -199,7 +194,7 @@ try:
         print(" === NR ", nrec, length[0] / 2)
 
         # no details, only header
-        if mrec < -1 :
+        if arg.num_records < -1 :
             continue
 
         i = 0
@@ -236,10 +231,10 @@ try:
                 lab = []
                 val = []
                 for k in range(ja + 1, jb):
-                    if minval is None:
+                    if arg.min_val is None:
                         lab.append(inder[k])
                         val.append(glder[k])
-                    elif abs(glder[k]) >= minval:
+                    elif abs(glder[k]) >= arg.min_val:
                         lab.append(inder[k])
                         val.append(glder[k])
                 print(" local  ", lab)
@@ -248,10 +243,10 @@ try:
                 lab = []
                 val = []
                 for k in range(jb + 1, i + 1):
-                    if minval is None:
+                    if arg.min_val is None:
                         lab.append(inder[k])
                         val.append(glder[k]) 
-                    elif abs(glder[k]) >= minval:
+                    elif abs(glder[k]) >= arg.min_val:
                         lab.append(inder[k])
                         val.append(glder[k])
                 print(" global ", lab)
