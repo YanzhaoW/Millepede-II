@@ -50,6 +50,13 @@
 #       `distrobox create -i python:2 -n py2`
 #   - Enter it to do test runs
 #       `distrobox enter py2`
+#
+# One can check how this performs against a corrupted mille data file
+# by using `dd` to intentionally only copy the first N bytes of a file.
+#
+#   dd count=10 if=uncorrupted.bin of=corrupted.bin
+#
+# will work if 'uncorrupted.bin' is greater than 512*10 bytes large.
 
 # in Python2.7, we can use the beta version of the print function
 #    imports from __future__ need to happen before any other code
@@ -63,14 +70,17 @@ import argparse
 # packing/unpacking structured binary data with Python
 import struct
 
-parser = argparse.ArgumentParser(description = 'read a mille binary file and print its data')
+parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description = 'read a mille binary file and print its data'
+        )
 parser.add_argument('--type', choices = ['c','fortran','autodetect'], default='autodetect',
                     help='type of binary file that will be read')
 parser.add_argument('filename', help='binary file to read')
 parser.add_argument('-n','--num-records', type=int, default=10,
-                    help='number of records (i.e. tracks) to print to terminal')
+                    help='Number of records (i.e. tracks) to print to terminal. Continue until the end of the file if negative.')
 parser.add_argument('-s','--skip-records', type=int, default=0,
-                    help='number of records (tracks) to skip before starting to print')
+                    help='number of records (tracks) to skip before starting to print.')
 parser.add_argument('--min-val', type=float,
                     help='minimum value to print derivatives')
 parser.add_argument('--quiet', action='store_true',
