@@ -21,11 +21,32 @@
 #  details); if not, write to the Free Software Foundation, Inc.,
 #  675 Mass Ave, Cambridge, MA 02139, USA.
 #
-# Hardcoded defaults can be replaced by command line arguments for
-#    -  Name of binary file
-#    -  Number of records to print (-1: all; <-1: all, record headers only)
-#    -  Number of records to skip (optional)
-#    -  Mininum value to print derivative
+# Use the `-h` or `--help` command options to print out the full list of options.
+# Here are a few helpful examples for what this script is helpful for.
+#
+# Select a Few Tracks:
+#
+# You can look at specific tracks by changing the number of records to print
+# and the number of records to skip before starting to print. Perhaps, you know
+# that the 100'th track is "bad" for some reason, then you could look at it and
+# its neighbors with
+#
+#   ./readMilleBinary.py --num_records 3 --skip-records 99 input.bin
+#
+# Check Format:
+#
+# You can check the format of a mille data file by running over all the records
+# and keeping the printout quiet.
+#
+#   ./readMilleBinary.py --num-records -1 --quiet input.bin
+#
+# If the format is correct, it will just printout the number of records and
+# have an exit status of 0. If it is incorrect, it will print an error and
+# have an non-zero exist status. *Warning*: The binary format cannot _by itself_
+# distinguish between a file that has been broken at a record boundary
+# and one that has successfully been closed correctly. For this reason, more 
+# thorough testing will be needed by the user if they wish to eliminate this 
+# possibility.
 #
 # Description of the output from readMilleBinary.py
 #    -  Records (tracks) start with \c '===' followed by record number and length 
@@ -39,6 +60,8 @@
 #    -  'Local' measurements start with \c '-l-' followed by measurement number, first local label, 
 #       number of local and global derivatives, measurement value and error. The next lines contain
 #       local labels (array('i')) and derivatives (array('f') or array('d')).
+#
+# ---
 #
 # Tested with SL4, SL5, SL6
 #
