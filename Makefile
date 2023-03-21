@@ -142,7 +142,7 @@ endif
 #  -L$(MKL_DIR) -lmkl_rt
 #  -lopenblasp64
 # Make the executables
-EXECUTABLES = pede 
+EXECUTABLES = pede readMilleBinary
 #
 
 all:	$(EXECUTABLES)
@@ -150,6 +150,9 @@ all:	$(EXECUTABLES)
 pede : 	${USER_OBJ_PEDE} Makefile
 	$(LOADER) $(L_FLAGS) \
 		-o $@ ${USER_OBJ_PEDE} $(C_LIBS) 
+#
+readMilleBinary : tools/readMilleBinary.py
+	cp tools/readMilleBinary.py readMilleBinary
 #
 clean:
 	rm -f *.o *~ */*.o */*~ *.mod */*.mod
