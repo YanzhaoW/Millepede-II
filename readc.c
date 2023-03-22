@@ -6,7 +6,7 @@
  * \author Claus Kleinwort, DESY (maintenance and developement)
  *
  *  \copyright
- *  Copyright (c) 2009 - 2019 Deutsches Elektronen-Synchroton,
+ *  Copyright (c) 2009 - 2023 Deutsches Elektronen-Synchroton,
  *  Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
  *  This library is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU Library General Public License as
@@ -23,12 +23,13 @@
  *
  *  C-methods to handle input of C/C++ binary files as input for
  *  the fortran **pede** program (see \ref peread).
+ *  \deprecated
  *  This includes macros utilising \c cfortran.h to allow direct callability
  *  from fortran.
  *
- *  \c initC() has to be called once in the beginning,
- *  followed by one or several calls to \c openC() to open one or several files.
- *  \c readC() is then called to read the records sequentially. \c resetC()
+ *  \c initc() has to be called once in the beginning,
+ *  followed by one or several calls to \c openc() to open one or several files.
+ *  \c readc() is then called to read the records sequentially. \c resetc()
  *  allows to rewind files.
  *
  *  If compiled with preprocessor macro \c USE_SHIFT_RFIO, uses \c libRFIO,
@@ -49,8 +50,11 @@
  *  - implement reading of records containing doubles (instead of floats)
  *    indicated by negative record length.
  *
- *  Last major update on April 10th, 2019 by C.Kleinwort:
+ *  Major update on April 10th, 2019 by C.Kleinwort:
  *  - Option to close and reopen files 
+ *
+ *  Last major update on March 21th, 2023 by C.Kleinwort:
+ *  - Fortran/C interoperability uses now 'iso_c_binding' (fortran 2003) instead of 'cfortran.h'
  */
 
 #ifdef USE_SHIFT_RFIO
@@ -62,7 +66,7 @@
 #else
 #include <stdio.h>
 #endif
-#include "cfortran.h"
+#include <stdlib.h>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -83,10 +87,10 @@ unsigned int numAllFiles;      ///< number of opened files
 /**
  * \param[in]  nFiles  Maximal number of C binary files to use.
  */
-void initC(int *nFiles) {
-	maxNumFiles = *nFiles;
+void initc(int nFiles) {
+	maxNumFiles = nFiles;
 #ifdef USE_ZLIB
-	printf(" initC: using zlib version %s\n",ZLIB_VERSION);
+	printf(" initc: using zlib version %s\n",ZLIB_VERSION);
 	files = (gzFile *) malloc(sizeof(gzFile *)*maxNumFiles);
 #else
 	files = (FILE **) malloc(sizeof(FILE *) * maxNumFiles);
@@ -99,60 +103,10 @@ void initC(int *nFiles) {
 	}
 	numAllFiles = 0;
 }
-FCALLSCSUB1( initC, INITC, initc, PINT)
-
-/*______________________________________________________________*/
-
-/* void rewinC() */
-/* { */
-/*   /\* rewind all open files and start again with first file *\/ */
-
-/*   unsigned int i = numAllFiles; */
-/*   while (i--) rewind(files[i]); /\* postfix decrement! *\/ */
-/*   fileIndex = 0; */
-/* } */
-/* FCALLSCSUB0(rewinC,REWINC,rewinc) */
-
-/*______________________________________________________________*/
-/// Rewind file.
-/**
- * \param[in]  nFileIn  File number (1 .. maxNumFiles)
- */
-void resetC(int *nFileIn) {
-	int fileIndex = *nFileIn - 1; /* index of current file */
-	if (fileIndex < 0)
-		return; /* no file opened at all... */
-#ifdef USE_ZLIB
-	gzrewind(files[fileIndex]);
-#else
-	/* rewind(files[fileIndex]);  Does not work with rfio, so call: */
-	fseek(files[fileIndex], 0L, SEEK_SET);
-	clearerr(files[fileIndex]); /* These two should be the same as rewind... */
-#endif
-}
-FCALLSCSUB1( resetC, RESETC, resetc, PINT)
-
-/*______________________________________________________________*/
-/// Close file.
-/**
- * \param[in]  nFileIn  File number (1 .. maxNumFiles)
- */
-void closeC(int *nFileIn) {
-	int fileIndex = *nFileIn - 1; /* index of current file */
-	if (fileIndex < 0)
-		return; /* no file opened at all... */
-#ifdef USE_ZLIB
-	gzclose(files[fileIndex]);
-#else
-	fclose(files[fileIndex]);
-#endif
-        files[fileIndex] = 0;
-}
-FCALLSCSUB1( closeC, CLOSEC, closec, PINT)
 
 /*______________________________________________________________*/
 /// Open file.
-void openC(const char *fileName, int *nFileIn, int *errorFlag)
+void openc(const char *fileName, int nFileIn, int *errorFlag)
 /**
  * \param[in]  fileName  File name
  * \param[in]  nFileIn  File number (1 .. maxNumFiles) or <=0 for next one
@@ -163,39 +117,74 @@ void openC(const char *fileName, int *nFileIn, int *errorFlag)
  *      * 3: if file opened, but with error (can that happen?)
  */
 {
-	/* No return value since to be called as subroutine from fortran */
+        /* No return value since to be called as subroutine from fortran */
 
-	if (!errorFlag)
-		return; /* 'printout' error? */
+        if (!errorFlag)
+                return; /* 'printout' error? */
 
-	int fileIndex = *nFileIn - 1; /* index of specific file */
-	if (fileIndex < 0) fileIndex = numAllFiles; /* next one */
-        
-	if (fileIndex >= maxNumFiles) {
-		*errorFlag = 1;
-	} else {
+        int fileIndex = nFileIn - 1; /* index of specific file */
+        if (fileIndex < 0) fileIndex = numAllFiles; /* next one */
+
+        if (fileIndex >= maxNumFiles) {
+                        *errorFlag = 1;
+        } else {
 #ifdef USE_ZLIB
-		files[fileIndex] = gzopen(fileName, "rb");
-		if (!files[fileIndex]) {
-			*errorFlag = 2;
-		} else
+                files[fileIndex] = gzopen(fileName, "rb");
+                if (!files[fileIndex]) {
+                        *errorFlag = 2;
+                } else
 #else
-		files[fileIndex] = fopen(fileName, "rb");
-		if (!files[fileIndex]) {
-			*errorFlag = 2;
-		} else if (ferror(files[fileIndex])) {
-			fclose(files[fileIndex]);
-			files[fileIndex] = 0;
-			*errorFlag = 3;
-		} else
+                files[fileIndex] = fopen(fileName, "rb");
+                if (!files[fileIndex]) {
+                        *errorFlag = 2;
+                } else if (ferror(files[fileIndex])) {
+                        fclose(files[fileIndex]);
+                        files[fileIndex] = 0;
+                        *errorFlag = 3;
+                } else
 #endif
-		{
-			++numAllFiles; /* We have one more opened file! */
-			*errorFlag = 0;
-		}
-	}
+                {
+                        ++numAllFiles; /* We have one more opened file! */
+                        *errorFlag = 0;
+                }
+        }
 }
-FCALLSCSUB3( openC, OPENC, openc, STRING, PINT, PINT)
+
+/*______________________________________________________________*/
+/// Close file.
+/**
+ * \param[in]  nFileIn  File number (1 .. maxNumFiles)
+ */
+void closec(int nFileIn) {
+        int fileIndex = nFileIn - 1; /* index of current file */
+        if (fileIndex < 0)
+                return; /* no file opened at all... */
+#ifdef USE_ZLIB
+        gzclose(files[fileIndex]);
+#else
+        fclose(files[fileIndex]);
+#endif
+        files[fileIndex] = 0;
+}
+
+/*______________________________________________________________*/
+/// Rewind file.
+/**
+ * \param[in]  nFileIn  File number (1 .. maxNumFiles)
+ */
+void resetc(int nFileIn) {
+        int fileIndex = nFileIn - 1; /* index of current file */
+        if (fileIndex < 0)
+                return; /* no file opened at all... */
+#ifdef USE_ZLIB
+        gzrewind(files[fileIndex]);
+#else
+        /* rewind(files[fileIndex]);  Does not work with rfio, so call: */
+        fseek(files[fileIndex], 0L, SEEK_SET);
+        clearerr(files[fileIndex]); /* These two should be the same as rewind...
+ */
+#endif
+}
 
 /*______________________________________________________________*/
 /// Read record from file.
@@ -217,8 +206,8 @@ FCALLSCSUB3( openC, OPENC, openc, STRING, PINT, PINT)
  *      *  =4: found floats
  *      *  =8: found doubles
  */
-void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
-		int *lengthBuffers, int *nFileIn, int *errorFlag) {
+void readc(double *bufferDouble, float *bufferFloat, int *bufferInt,
+		int *lengthBuffers, int nFileIn, int *errorFlag) {
 	/* No return value since to be called as subroutine from fortran,
 	 negative *errorFlag are errors, otherwise fine.
 
@@ -230,7 +219,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 	if (!errorFlag)
 		return;
 	*errorFlag = 0;
-	int fileIndex = *nFileIn - 1; /* index of current file */
+	int fileIndex = nFileIn - 1; /* index of current file */
 	if (fileIndex < 0)
 		return; /* no file opened at all... */
 	if (!bufferFloat || !bufferInt || !lengthBuffers) {
@@ -252,7 +241,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 		recordLength = -recordLength;
 	}
 	if (sizeof(recordLength) != nCheckR) {
-		printf("readC: problem reading length of record file %d\n", fileIndex);
+		printf("readc: problem reading length of record file %d\n", fileIndex);
 		*errorFlag = -2;
 		return;
 	}
@@ -267,7 +256,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 			{
 				int nCheckD = gzread(files[fileIndex], bufferDouble, sizeof(bufferDouble[0]));
 				if (nCheckD != sizeof(bufferDouble[0])) {
-					printf("readC: problem with stream or EOF skipping doubles\n");
+					printf("readc: problem with stream or EOF skipping doubles\n");
 					*errorFlag = -32;
 					return;
 				}
@@ -277,7 +266,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 			{
 				int nCheckF = gzread(files[fileIndex], bufferFloat, sizeof(bufferFloat[0]));
 				if (nCheckF != sizeof(bufferFloat[0])) {
-					printf("readC: problem with stream or EOF skipping floats\n");
+					printf("readc: problem with stream or EOF skipping floats\n");
 					*errorFlag = -8;
 					return;
 				}
@@ -289,7 +278,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 		{
 			int nCheckI = gzread(files[fileIndex], bufferInt, sizeof(bufferInt[0]));
 			if (nCheckI != sizeof(bufferInt[0])) {
-				printf("readC: problem with stream or EOF skipping ints\n");
+				printf("readc: problem with stream or EOF skipping ints\n");
 				*errorFlag = -16;
 				return;
 			}
@@ -306,14 +295,14 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 	if (doublePrec) {
 		int nCheckD = gzread(files[fileIndex], bufferDouble, *lengthBuffers*8);
 		if (nCheckD != *lengthBuffers*8) {
-			printf("readC: problem with stream or EOF reading doubles\n");
+			printf("readc: problem with stream or EOF reading doubles\n");
 			*errorFlag = -32;
 			return;
 		}
 	} else {
 		int nCheckF = gzread(files[fileIndex], bufferFloat, *lengthBuffers*4);
 		if (nCheckF != *lengthBuffers*4) {
-			printf("readC: problem with stream or EOF reading floats\n");
+			printf("readc: problem with stream or EOF reading floats\n");
 			*errorFlag = -8;
 			return;
 		}
@@ -324,7 +313,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 	/* read ints (i.e. parameter labels) */
 	int nCheckI = gzread(files[fileIndex], bufferInt, *lengthBuffers*4);
 	if (nCheckI != *lengthBuffers*4) {
-		printf("readC: problem with stream or EOF reading ints\n");
+		printf("readc: problem with stream or EOF reading ints\n");
 		*errorFlag = -16;
 		return;
 	}
@@ -340,7 +329,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 	}
 
 	if (1 != nCheckR || ferror(files[fileIndex])) {
-		printf("readC: problem reading length of record, file %d\n", fileIndex);
+		printf("readc: problem reading length of record, file %d\n", fileIndex);
 		*errorFlag = -2;
 		return;
 	}
@@ -361,7 +350,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 				if (ferror(files[fileIndex]) || feof(files[fileIndex])
 						|| nCheckD != *lengthBuffers) {
 					printf(
-							"readC: problem with stream or EOF skipping doubles\n");
+							"readc: problem with stream or EOF skipping doubles\n");
 					*errorFlag = -32;
 					return;
 				}
@@ -373,7 +362,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 				if (ferror(files[fileIndex]) || feof(files[fileIndex])
 						|| nCheckF != *lengthBuffers) {
 					printf(
-							"readC: problem with stream or EOF skipping floats\n");
+							"readc: problem with stream or EOF skipping floats\n");
 					*errorFlag = -8;
 					return;
 				}
@@ -386,7 +375,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 					files[fileIndex]);
 			if (ferror(files[fileIndex]) || feof(files[fileIndex])
 					|| nCheckI != *lengthBuffers) {
-				printf("readC: problem with stream or EOF skiping ints\n");
+				printf("readc: problem with stream or EOF skiping ints\n");
 				*errorFlag = -16;
 				return;
 			}
@@ -405,7 +394,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 				*lengthBuffers, files[fileIndex]);
 		if (ferror(files[fileIndex]) || feof(files[fileIndex])
 				|| nCheckD != *lengthBuffers) {
-			printf("readC: problem with stream or EOF reading doubles\n");
+			printf("readc: problem with stream or EOF reading doubles\n");
 			*errorFlag = -32;
 			return;
 		}
@@ -414,7 +403,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 				*lengthBuffers, files[fileIndex]);
 		if (ferror(files[fileIndex]) || feof(files[fileIndex])
 				|| nCheckF != *lengthBuffers) {
-			printf("readC: problem with stream or EOF reading floats\n");
+			printf("readc: problem with stream or EOF reading floats\n");
 			*errorFlag = -8;
 			return;
 		}
@@ -427,7 +416,7 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 			files[fileIndex]);
 	if (ferror(files[fileIndex]) || feof(files[fileIndex])
 			|| nCheckI != *lengthBuffers) {
-		printf("readC: problem with stream or EOF reading ints\n");
+		printf("readc: problem with stream or EOF reading ints\n");
 		*errorFlag = -16;
 		return;
 	}
@@ -435,4 +424,3 @@ void readC(double *bufferDouble, float *bufferFloat, int *bufferInt,
 
 	*errorFlag = 4 * (doublePrec + 1);
 }
-FCALLSCSUB6(readC,READC,readc,PDOUBLE,PFLOAT,PINT,PINT,PINT,PINT)

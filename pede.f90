@@ -53,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-12-03 \
+!!         git clone --depth 1 --branch V04-13-00 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -162,6 +162,7 @@
 !! * 221212: Force \ref ch-checkinput "check input mode" (2) in case of accepted *empty* constraints
 !!   (no variable parameters). No solution will be calculated.
 !! * 230201: Fix global parameter errors for solution by diagonalization using elimination of constraints.
+!! * 230321: Fortran/C interoperability uses now 'iso_c_binding' (fortran 2003) instead of 'cfortran.h'.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -2280,6 +2281,20 @@ SUBROUTINE peread(more)
     !$    INTEGER(mpi) :: OMP_GET_THREAD_NUM
     CHARACTER (LEN=7) :: cfile
     SAVE
+
+#ifdef READ_C_FILES
+    INTERFACE
+        SUBROUTINE readc(bufferD, bufferF, bufferI, bufferLength, lun, err) BIND(c)
+            USE iso_c_binding
+            REAL(c_double), DIMENSION(*), INTENT(OUT) :: bufferD
+            REAL(c_float), DIMENSION(*), INTENT(OUT) :: bufferF
+            INTEGER(c_int), DIMENSION(*), INTENT(OUT) :: bufferI
+            INTEGER(c_int), INTENT(INOUT) :: bufferLength
+            INTEGER(c_int), INTENT(IN), VALUE :: lun
+            INTEGER(c_int), INTENT(OUT) :: err
+        END SUBROUTINE readc
+    END INTERFACE
+#endif
 
     DATA lprint/.TRUE./
     DATA floop/.TRUE./
@@ -10176,6 +10191,16 @@ SUBROUTINE filetc
     CHARACTER (LEN=32) :: keystx
     INTEGER(mpi), PARAMETER :: mnum=100
     REAL(mpd) :: dnum(mnum)
+
+#ifdef READ_C_FILES
+    INTERFACE
+        SUBROUTINE initc(nfiles) BIND(c)
+            USE iso_c_binding
+            INTEGER(c_int), INTENT(IN), VALUE :: nfiles
+        END SUBROUTINE initc
+    END INTERFACE
+#endif
+
     SAVE
     DATA bite/'C_binary','text  ','Fortran_binary'/
     !     ...
@@ -11867,6 +11892,16 @@ SUBROUTINE binopn(kfile, ithr, ierr)
     CHARACTER (LEN=7) :: cfile
     INTEGER stat
 
+#ifdef READ_C_FILES
+    INTERFACE
+        SUBROUTINE openc(filename, lun, ios) BIND(c)
+            USE iso_c_binding
+            CHARACTER(kind=c_char), DIMENSION(*), INTENT(IN) :: filename
+            INTEGER(c_int), INTENT(IN), VALUE :: lun
+            INTEGER(c_int), INTENT(INOUT) :: ios
+        END SUBROUTINE openc
+    END INTERFACE
+#endif
 
     ierr=0
     lun=ithr
@@ -11941,7 +11976,16 @@ SUBROUTINE bincls(kfile, ithr)
     INTEGER(mpi), INTENT(IN) :: ithr
 
     INTEGER(mpi) :: lun
-    
+
+#ifdef READ_C_FILES
+    INTERFACE
+        SUBROUTINE closec(lun) BIND(c)
+            USE iso_c_binding
+            INTEGER(c_int), INTENT(IN), VALUE :: lun
+        END SUBROUTINE closec
+    END INTERFACE
+#endif
+
     lun=ithr
     !print *, " closing binary ", kfile, ithr
     IF(kfile <= nfilf) THEN ! Fortran file
@@ -11966,7 +12010,16 @@ SUBROUTINE binrwd(kfile)
     INTEGER(mpi), INTENT(IN) :: kfile
 
     INTEGER(mpi) :: lun
-           
+
+#ifdef READ_C_FILES
+    INTERFACE
+        SUBROUTINE resetc(lun) BIND(c)
+            USE iso_c_binding
+            INTEGER(c_int), INTENT(IN), VALUE :: lun
+        END SUBROUTINE resetc
+    END INTERFACE
+#endif
+
     !print *, " rewinding binary ", kfile
     IF (kfile <= nfilf) THEN
         lun=kfile+10
