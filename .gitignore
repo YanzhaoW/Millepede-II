@@ -5,5 +5,11 @@
 # ignore pede executable
 /pede
 
+# ignore readMilleBinary executable
+/readMilleBinary
+
+# ignore default installation directory
+bin
+
 # ignore editor backups
 *.bck
