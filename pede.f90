@@ -53,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-13-00 \
+!!         git clone --depth 1 --branch V04-13-01 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -163,10 +163,11 @@
 !!   (no variable parameters). No solution will be calculated.
 !! * 230201: Fix global parameter errors for solution by diagonalization using elimination of constraints.
 !! * 230321: Fortran/C interoperability uses now 'iso_c_binding' (fortran 2003) instead of 'cfortran.h'.
+!! * 230322: Tool \c readMilleBinary.py now compatible with python3, updated CLI.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
-!! * \c readMilleBinary.py: Python2 script to read binary files and print
+!! * \c readMilleBinary.py: Python script to read binary files and print
 !!   records in text form.
 !! * \c compareResults.py: Python2 script to compare result files (<tt>millepede.res</tt>).
 !! * \c readPedeHists.C: ROOT script to read and convert the **Millepede**

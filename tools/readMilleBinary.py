@@ -4,9 +4,10 @@
 # Read millepede binary file and print records
 #
 # \author Claus Kleinwort, DESY, 2009-2022 (Claus.Kleinwort@desy.de)
+# \author Thomas Eichlersmith, Univ. Minnesota, 2023 (eichl008@umn.edu), major upgrade for python3 and CLI
 #
 #  \copyright
-#  Copyright (c) 2009 - 2018 Deutsches Elektronen-Synchroton,
+#  Copyright (c) 2009 - 2023 Deutsches Elektronen-Synchroton,
 #  Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 #  This library is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU Library General Public License as
