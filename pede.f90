@@ -6841,6 +6841,7 @@ SUBROUTINE loop2
     INTEGER(mpi) :: nggi
     INTEGER(mpi) :: nmatmo
     INTEGER(mpi) :: noff
+    INTEGER(mpi) :: npair
     INTEGER(mpi) :: npar
     INTEGER(mpi) :: nparmx
     INTEGER(mpi) :: nr
@@ -6874,6 +6875,8 @@ SUBROUTINE loop2
     
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsGroupList
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsGroupIndex
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecPairedParGroups
+
 
     INTERFACE ! needed for assumed-shape dummy arguments
         SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
@@ -6900,6 +6903,12 @@ SUBROUTINE loop2
             INTEGER(mpi), DIMENSION(:,:), INTENT(IN) :: npgrp
             INTEGER(mpi), DIMENSION(:), INTENT(OUT) :: npair
         END SUBROUTINE gpbmap
+        SUBROUTINE ggbmap(ipgrp,npair,npgrp)
+            USE mpdef
+            INTEGER(mpi), INTENT(IN) :: ipgrp
+            INTEGER(mpi), INTENT(OUT) :: npair
+            INTEGER(mpi), DIMENSION(:), INTENT(OUT) :: npgrp
+        END SUBROUTINE ggbmap
     END INTERFACE
     
     SAVE
@@ -6988,7 +6997,8 @@ SUBROUTINE loop2
         print *, ' Variable parameter groups ', nvpgrp
         DO i=1,nvpgrp
             itgbi=globalParVarToTotal(globalAllIndexGroups(i))
-            print *, i, globalAllIndexGroups(i),globalAllIndexGroups(i+1)-globalAllIndexGroups(i), &
+            k=globalParLabelIndex(4,itgbi) ! (total) group index
+            print *, i,k,globalAllIndexGroups(i),globalAllIndexGroups(i+1)-globalAllIndexGroups(i), &
                 globalParLabelIndex(1,itgbi)
         END DO
         print *
@@ -7335,6 +7345,19 @@ SUBROUTINE loop2
         
     IF (icheck > 1) THEN
         CALL gpbmap(ntpgrp,globalTotIndexGroups,pairCounter)
+    END IF 
+    IF (icheck > 3) THEN
+        length=ntpgrp+ncgrp
+        CALL mpalloc(vecPairedParGroups,length,'paired global parameter groups (I)')
+        print *
+        print *, ' Total parameter groups pairs', ntpgrp
+        DO i=1,ntpgrp
+            itgbi=globalTotIndexGroups(1,i)
+            CALL ggbmap(i,npair,vecPairedParGroups)
+            k=globalParLabelIndex(4,itgbi) ! (total) group index
+            print *, i, itgbi, globalParLabelIndex(1,itgbi), npair, ':', vecPairedParGroups(:npair)
+        END DO
+        print *
     END IF    
     
     ! check constraints and measurements
@@ -8685,7 +8708,7 @@ SUBROUTINE lpqldec(a,emin,emax)
     INTEGER(mpl) :: iloff
     INTEGER(mpi) :: infolp
     INTEGER :: nbopt, ILAENV
- 
+     
     REAL(mpd), INTENT(IN) :: a(mszcon)
     REAL(mpd), INTENT(OUT)         :: emin
     REAL(mpd), INTENT(OUT)         :: emax
@@ -8721,10 +8744,10 @@ SUBROUTINE lpqldec(a,emin,emax)
         DO icb=icboff+1,icboff+icblst
             icfrst=matConsBlocks(1,icb)       ! first constraint in block
             iclast=matConsBlocks(1,icb+1)-1   ! last constraint in block
-            ipfrst=matConsBlocks(2,icb)-ipoff ! first (rel.) parameter
-            iplast=matConsBlocks(3,icb)-ipoff ! last  (rel.) parameters
-            npb=iplast-ipfrst+1
             DO j=icfrst,iclast
+                ipfrst=matConsRanges(3,j)-ipoff ! first (rel.) parameter
+                iplast=matConsRanges(4,j)-ipoff ! last  (rel.) parameters
+                npb=iplast-ipfrst+1
                 lapackQL(iloff+ipfrst:iloff+iplast)=a(imoff+1:imoff+npb)
                 imoff=imoff+npb
                 iloff=iloff+npar
@@ -12034,7 +12057,41 @@ SUBROUTINE binrwd(kfile)
 
 END SUBROUTINE binrwd
                     
-                    
+!> Check global matrix.
+SUBROUTINE chkmat
+    USE mpmod
+
+    INTEGER(mpl) :: i
+    INTEGER(mpl) :: nan
+    INTEGER(mpl) :: neg
+    
+    print *
+    print *, ' Checking global matrix(D) for NANs ', size(globalMatD,kind=mpl)
+    nan=0
+    DO i=1,size(globalMatD,kind=mpl)
+        IF(.NOT.(globalMatD(i) <= 0.0_mpd).AND..NOT.(globalMatD(i) > 0.0_mpd)) THEN
+            nan=nan+1
+            print *, ' i, nan ', i, nan
+        END IF    
+    END DO
+
+    IF (matsto > 1) RETURN
+    print *
+    print *, ' Checking diagonal elements ', nagb
+    neg=0
+    DO i=1,nagb
+        IF(.NOT.(globalMatD(globalRowOffsets(i)+i) > 0.0_mpd)) THEN
+            neg=neg+1
+            print *, ' i, neg ', i, neg
+        END IF 
+    END DO
+    print *
+    print *, ' CHKMAT summary ', nan, neg
+    print *
+    
+END SUBROUTINE chkmat 
+
+                       
 ! ----- accurate summation ----(from mpnum) ---------------------------------
 
 !> Accurate summation.

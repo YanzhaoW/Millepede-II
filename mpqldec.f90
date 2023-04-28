@@ -4,7 +4,7 @@
 !! \author Claus Kleinwort, DESY, 2015 (Claus.Kleinwort@desy.de)
 !!
 !! \copyright
-!! Copyright (c) 2015-2022 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2015-2023 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -1029,13 +1029,13 @@ SUBROUTINE qldump()
     DO i=1, ncon
         kn=npar-ncon+i
         istat=0
+        v1=0.;v2=0.;v3=0.;v4=0.
         ! expand row 'i' of matV into vecN
         ! non-zero range (excluding 'kn')
         ifirst=irangeParNZ(1,i) 
         ilast=irangeParNZ(2,i)
         vecN=0._mpd
         vecN(ifirst:ilast)=matV(ioffRow(i)+1:ioffRow(i)+1+ilast-ifirst) 
-        vecN(kn)=vecVk(i)
         DO j=1,npar+i-ncon
             IF (vecN(j) /= 0.0_mpd) THEN
                 v2=vecN(j)
@@ -1060,9 +1060,9 @@ SUBROUTINE qldump()
             END IF
         END DO
         ioff2=ioff2+ncon
-        print 100, i, istat, v1, v2, v3, v4, irangeParNZ(:,i)  
+        print 100, i, istat, v1, v2, v3, v4, vecVk(i), irangeParNZ(:,i)  
     END DO
     print *
-100 FORMAT(" qldump",7I8,4G13.5,2I8)   
+100 FORMAT(" qldump",7I8,5G13.5,2I8)   
     
 END SUBROUTINE qldump
