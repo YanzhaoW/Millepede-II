@@ -106,7 +106,7 @@ void initc(int nFiles) {
 
 /*______________________________________________________________*/
 /// Open file.
-void openc(const char *fileName, int nFileIn, int *errorFlag)
+void openc(const char *fileName, int lfn, int nFileIn, int *errorFlag)
 /**
  * \param[in]  fileName  File name
  * \param[in]  nFileIn  File number (1 .. maxNumFiles) or <=0 for next one
@@ -128,13 +128,19 @@ void openc(const char *fileName, int nFileIn, int *errorFlag)
         if (fileIndex >= maxNumFiles) {
                         *errorFlag = 1;
         } else {
+                char *s = malloc(lfn+1);
+                int i;
+                for ( i=0; i<lfn; i++ ) {
+                        s[i] = fileName[i];
+                }
+                s[lfn] = '\0';
 #ifdef USE_ZLIB
-                files[fileIndex] = gzopen(fileName, "rb");
+                files[fileIndex] = gzopen(s, "rb");
                 if (!files[fileIndex]) {
                         *errorFlag = 2;
                 } else
 #else
-                files[fileIndex] = fopen(fileName, "rb");
+                files[fileIndex] = fopen(s, "rb");
                 if (!files[fileIndex]) {
                         *errorFlag = 2;
                 } else if (ferror(files[fileIndex])) {
@@ -147,6 +153,8 @@ void openc(const char *fileName, int nFileIn, int *errorFlag)
                         ++numAllFiles; /* We have one more opened file! */
                         *errorFlag = 0;
                 }
+
+                free(s);
         }
 }
 

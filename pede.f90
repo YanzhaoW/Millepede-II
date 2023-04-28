@@ -11895,9 +11895,10 @@ SUBROUTINE binopn(kfile, ithr, ierr)
 
 #ifdef READ_C_FILES
     INTERFACE
-        SUBROUTINE openc(filename, lun, ios) BIND(c)
+        SUBROUTINE openc(filename, lfn, lun, ios) BIND(c)
             USE iso_c_binding
             CHARACTER(kind=c_char), DIMENSION(*), INTENT(IN) :: filename
+            INTEGER(c_int), INTENT(IN), VALUE :: lfn
             INTEGER(c_int), INTENT(IN), VALUE :: lun
             INTEGER(c_int), INTENT(INOUT) :: ios
         END SUBROUTINE openc
@@ -11925,7 +11926,7 @@ SUBROUTINE binopn(kfile, ithr, ierr)
 #ifdef READ_C_FILES
     ELSE
         ! C file
-        CALL openc(fname(1:lfn),lun,ios)
+        CALL openc(fname(1:lfn),lfn,lun,ios)
 #else
         WRITE(*,*) 'Opening of C-files not supported.'
         ierr=1
