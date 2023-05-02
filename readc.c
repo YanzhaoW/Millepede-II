@@ -55,6 +55,7 @@
  *
  *  Last major update on March 21th, 2023 by C.Kleinwort:
  *  - Fortran/C interoperability uses now 'iso_c_binding' (fortran 2003) instead of 'cfortran.h'
+ *    (Proper string termination (file names) by thomas.white@desy.de)
  */
 
 #ifdef USE_SHIFT_RFIO
