@@ -110,6 +110,7 @@ void initc(int nFiles) {
 void openc(const char *fileName, int lfn, int nFileIn, int *errorFlag)
 /**
  * \param[in]  fileName  File name
+ * \param[in]  lfn  Length of file name
  * \param[in]  nFileIn  File number (1 .. maxNumFiles) or <=0 for next one
  * \param[out] errorFlag error flag:
  *      * 0: if file opened and OK,
