@@ -166,6 +166,9 @@
 !! * 230322: Tool \c readMilleBinary.py now compatible with python3, updated CLI.
 !! * 230502: Cleanup and fixes (constraint elimination with LAPACK using constraint groups,
 !!   proper termination of file names for 'iso_c_binding')
+!! * 2305xx: Check for redundancy constraints: Constraint groups defining linear transformation between two groups
+!!   of equivalent global parameters. With the new command \ref cmd-resolveredundancycons they can be resolved
+!!   (to save resources and burden on numerics).
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -678,6 +681,10 @@
 !! Set flag \ref mpmod::nregul "nregul" for regularization to 1 (true),
 !! regularization parameter \ref mpmod::regula "regula" to \a number2,
 !! default pre-sigma \ref mpmod::regpre "regpre" to \a number3.
+!! \subsection cmd-resolveredundancycons resolveredundancycons
+!! Set flag \ref mpmod::irslvrc "irslvrc" to 1 (true).
+!! Redundancy constraints will be resolved 
+!! (parameters appearing in constraints will be fixed, constraints skipped).
 !! \subsection cmd-scaleerrors scaleerrors
 !! Set measurement scaling factors \ref mpmod::dscerr "dscerr"
 !! to \a number1 [1.] and \a number2 [\a number1].
@@ -1499,11 +1506,11 @@ SUBROUTINE addcst
 102 FORMAT(a,g11.2,a)
 END SUBROUTINE addcst
 
-!> Prepare constraints.
+!> Group constraints.
 !!
-!! Count, sort constraints and split into disjoint blocks.
-
-SUBROUTINE prpcon
+!! Group constraints using all parameters (exploiting sparsity), resolve redundancy constraints.
+!!
+SUBROUTINE grpcon
     USE mpmod
     USE mpdalc
 
@@ -1511,46 +1518,40 @@ SUBROUTINE prpcon
     INTEGER(mpi) :: i
     INTEGER(mpi) :: icgb
     INTEGER(mpi) :: icgrp
-    INTEGER(mpi) :: ifrst
-    INTEGER(mpi) :: ilast
-    INTEGER(mpi) :: isblck
+    INTEGER(mpi) :: ioff
     INTEGER(mpi) :: itgbi
-    INTEGER(mpi) :: ivgb
     INTEGER(mpi) :: j
     INTEGER(mpi) :: jcgb
-    INTEGER(mpi) :: jfrst
     INTEGER(mpi) :: label
     INTEGER(mpi) :: labelf
     INTEGER(mpi) :: labell
+    INTEGER(mpi) :: line1
     INTEGER(mpi) :: ncon
+    INTEGER(mpi) :: ndiff
     INTEGER(mpi) :: npar
-    INTEGER(mpi) :: ncnmxb
-    INTEGER(mpi) :: ncnmxg
-    INTEGER(mpi) :: nprmxb
-    INTEGER(mpi) :: nprmxg
     INTEGER(mpi) :: inone
     INTEGER(mpi) :: itype
+    INTEGER(mpi) :: ncgbd
+    INTEGER(mpi) :: ncgbr
     INTEGER(mpi) :: ncgbw
-    INTEGER(mpi) :: newlen
-    INTEGER(mpi) :: nvar
+    INTEGER(mpi) :: ncgrpd
+    INTEGER(mpi) :: ncgrpr
+    INTEGER(mpi) :: next
     INTEGER(mpi) :: last
-    INTEGER(mpi) :: lastlen
 
     INTEGER(mpl):: length
     INTEGER(mpl) :: rows
     
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecParConsOffsets
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecParConsList
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsParOffsets
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsParList
     INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: matConsGroupIndex
 
     ncgb=0
     ncgbw=0
-    ncgbe=0
     IF(lenConstraints == 0) RETURN  ! no constraints
 
-    newlen=0
-    lastlen=0
-    nvar=-1
     i=0
     last=0
     itype=0
@@ -1559,70 +1560,29 @@ SUBROUTINE prpcon
         i=i+1
         label=listConstraints(i)%label
         IF(last < 0.AND.label < 0) THEN
-            IF (ncgb > 0 .AND. icheck>0) WRITE(*,113) ncgb, newlen-lastlen-3, nvar
-            IF (nvar == 0) ncgbe=ncgbe+1
-            IF (nvar == 0 .AND. iskpec > 0) THEN
-                ! overwrite
-                newlen=lastlen
-                ! copy previous value (for label 0)
-                newlen=newlen+1
-                listConstraints(newlen)%value=listConstraints(i-1)%value
-            ELSE
-                lastlen=newlen-1 ! end of last accepted constraint
-            END IF
             ncgb=ncgb+1
             itype=-label
             IF(itype == 2) ncgbw=ncgbw+1
-            nvar=0
         END IF
         last=label
         IF(label > 0) THEN
             itgbi=inone(label) ! -> ITGBI= index of parameter label
-            ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
-            IF (ivgb > 0) THEN
-                nvar=nvar+1
-                globalParCons(ivgb)=globalParCons(ivgb)+1
-            END IF    
+            globalParCons(itgbi)=globalParCons(itgbi)+1
         END IF
         IF(label > 0.AND.itype == 2) THEN  ! weighted constraints
             itgbi=inone(label) ! -> ITGBI= index of parameter label
             listConstraints(i)%value=listConstraints(i)%value*globalParCounts(itgbi)
         END IF
-        newlen=newlen+1
-        listConstraints(newlen)%label=listConstraints(i)%label ! copy label
-        listConstraints(newlen)%value=listConstraints(i)%value ! copy value
     END DO
-    IF (ncgb > 0 .AND. icheck>0) WRITE(*,113) ncgb, newlen-lastlen-2, nvar
-    IF (nvar == 0) ncgbe=ncgbe+1
-    IF (nvar == 0 .AND. iskpec > 0) newlen=lastlen
-    lenConstraints=newlen
 
-    IF (ncgbe > 0) THEN
-        IF (iskpec > 0) THEN
-            WRITE(*,*) 'PRPCON:',ncgbe,' empty constraints skipped'
-            ncgb=ncgb-ncgbe
-        ELSE
-            WRITE(*,*) 'PRPCON:',ncgbe,' empty constraints detected, to be fixed !!!'
-            WRITE(*,*) '       (use option "skipemptycons" to skip those)'
-            IF (icheck == 0) THEN
-                icheck=2     ! switch to '-C'
-                ncgbe=-ncgbe ! indicate that
-                WRITE(*,*)
-                WRITE(*,*) '!!!   Switch to "-C" (checking input only), no calculation of a solution   !!!'
-                WRITE(8,*) '!!!   Switch to "-C" (checking input only), no calculation of a solution   !!!'
-                WRITE(*,*)
-            END IF
-        END IF
-    END IF
+    WRITE(*,*)
     IF (ncgbw == 0) THEN
-        WRITE(*,*) 'PRPCON:',ncgb,' constraints accepted'
+        WRITE(*,*) 'GRPCON:',ncgb,' constraints found in steering files'
     ELSE
-        WRITE(*,*) 'PRPCON:',ncgb,' constraints accepted,',ncgbw, 'weighted'
+        WRITE(*,*) 'GRPCON:',ncgb,' constraints found in steering files,',ncgbw, 'weighted'
     END IF
     WRITE(*,*)
-    
-    IF(lenConstraints == 0) RETURN  ! no constraints left
-    
+        
     ! keys and index for sorting of constraints
     length=ncgb+1; rows=3
     CALL mpalloc(matConsSort,rows,length,'keys and index for sorting (I)')
@@ -1632,60 +1592,78 @@ SUBROUTINE prpcon
     vecConsStart(ncgb+1)=lenConstraints+1
     ! start and parameter range of constraint groups 
     CALL mpalloc(matConsGroups,rows,length,'start of constraint groups, par. range (I)')
-    ! start and parameter range of constraint blocks 
-    CALL mpalloc(matConsBlocks,rows,length,'start of constraint blocks, par. range (I)')
-    length=ncgb; rows=4
+    ! parameter ranges (all, variable) of constraints
+    length=ncgb; rows=4 
     CALL mpalloc(matConsRanges,rows,length,'parameter ranges for constraint (I)') 
-    
-    ! Exploit sparsity of constraints:
-    ! 1) bottom/up splitting into disjoint groups (-> rank check with product matrix)
-    ! 2) combination into non overlaping blocks (-> QL decomposition)
+
     length=ncgb; rows=3
     CALL mpalloc(matConsGroupIndex,rows,length,'group index for constraint (I)')    
-    matConsGroupIndex=0   
-    length=nvgb+1
+    matConsGroupIndex=0  
+    length=ncgb+1 
+    CALL mpalloc(vecConsParOffsets,length,'offsets for global par list for cons. (I)')
+    length=ntgb+1
     CALL mpalloc(vecParConsOffsets,length,'offsets for cons. list for global par. (I)')
     vecParConsOffsets(1)=0
-    DO i=1,nvgb
+    DO i=1,ntgb
         vecParConsOffsets(i+1)=vecParConsOffsets(i)+globalParCons(i)
     END DO
     globalParCons=0
-    length=vecParConsOffsets(nvgb+1)
+    
+    length=vecParConsOffsets(ntgb+1)
+    CALL mpalloc(vecConsParList,length,'constraint list for global par. (I)')
     CALL mpalloc(vecParConsList,length,'constraint list for global par. (I)')
     
+    IF (icheck>1) THEN
+        print *, ' Constraint #parameters  #diff.par.  first par.   last par.  first line'
+    END IF    
     ! prepare
     i=1
+    ioff=0
+    vecConsParOffsets(1)=ioff
     DO icgb=1,ncgb
         ! new constraint 
         vecConsStart(icgb)=i
-        matConsRanges(1,icgb)=ntgb ! min variable parameter
-        matConsRanges(2,icgb)=0    ! max variable parameter
+        line1=-listConstraints(i)%label
+        npar=0
         i=i+2
         DO
             label=listConstraints(i)%label
             itgbi=inone(label) ! -> ITGBI= index of parameter label
-            ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
-            IF(ivgb > 0) THEN
-                matConsRanges(1,icgb)=min(matConsRanges(1,icgb),ivgb)
-                matConsRanges(2,icgb)=max(matConsRanges(2,icgb),ivgb)
-                ! list of constraints for 'ivgb' 
-                globalParCons(ivgb)=globalParCons(ivgb)+1
-                vecParConsList(vecParConsOffsets(ivgb)+globalParCons(ivgb))=icgb
-            END IF    
+            ! list of constraints for 'itgbi' 
+            globalParCons(itgbi)=globalParCons(itgbi)+1
+            vecParConsList(vecParConsOffsets(itgbi)+globalParCons(itgbi))=icgb
+            npar=npar+1
+            vecConsParList(ioff+npar)=itgbi
             i=i+1
             IF(i > lenConstraints) EXIT
             IF(listConstraints(i)%label < 0) EXIT
         END DO
+        ! sort to find duplicates
+        CALL sort1k(vecConsParList(ioff+1),npar)
+        last=-1
+        ndiff=0
+        DO j=1,npar
+            next=vecConsParList(ioff+j)
+            IF (next /= last) THEN
+                ndiff=ndiff+1
+                vecConsParList(ioff+ndiff) = next
+            END IF
+            last=next
+        END DO
+        matConsRanges(1,icgb)=vecConsParList(ioff+1) ! min  parameter
+        ioff=ioff+ndiff
+        matConsRanges(2,icgb)=vecConsParList(ioff)   ! max  parameter
+        vecConsParOffsets(icgb+1)=ioff
+        IF (icheck>0) THEN
+            labelf=globalParLabelIndex(1,matConsRanges(1,icgb))
+            labell=globalParLabelIndex(1,matConsRanges(2,icgb))
+            PRINT *, icgb, npar, ndiff, labelf, labell, line1
+        END IF    
     END DO
+    vecConsStart(ncgb+1)=lenConstraints+1
     
     ! sort (by first, last parameter)
     DO icgb=1,ncgb
-        ! empty constraint?
-        IF (matConsRanges(1,icgb) > matConsRanges(2,icgb)) THEN
-            ! enforce npar=0
-            matConsRanges(1,icgb)=ntgb+1
-            matConsRanges(2,icgb)=ntgb            
-        END IF
         matConsSort(1,icgb)=matConsRanges(1,icgb) ! first par.
         matConsSort(2,icgb)=matConsRanges(2,icgb) ! last par.
         matConsSort(3,icgb)=icgb                 ! index
@@ -1694,29 +1672,22 @@ SUBROUTINE prpcon
 
     ! split into disjoint groups
     ncgrp=0
+    globalParCons=0
     DO jcgb=1,ncgb
         icgb=matConsSort(3,jcgb)
-        i=vecConsStart(icgb)+2
         ! alredy part of block?
         icgrp=matConsGroupIndex(1,icgb)
         IF (icgrp == 0) THEN
             ! check all parameters
-            DO
-                label=listConstraints(i)%label
-                itgbi=inone(label) ! -> ITGBI= index of parameter label
-                ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
-                IF(ivgb > 0) THEN
-                    ! check all related constraints
-                    DO j=vecParConsOffsets(ivgb)+1,vecParConsOffsets(ivgb+1)
-                        icgrp=matConsGroupIndex(1,vecParConsList(j))
-                        ! already part of block?
-                        IF (icgrp > 0) EXIT
-                    END DO
-                END IF    
+            DO i=vecConsParOffsets(icgb)+1, vecConsParOffsets(icgb+1)
+                itgbi=vecConsParList(i)
+                ! check all related constraints
+                DO j=vecParConsOffsets(itgbi)+1,vecParConsOffsets(itgbi+1)
+                    icgrp=matConsGroupIndex(1,vecParConsList(j))
+                    ! already part of block?
+                    IF (icgrp > 0) EXIT
+                END DO
                 IF (icgrp > 0) EXIT
-                i=i+1
-                IF(i > lenConstraints) EXIT
-                IF(listConstraints(i)%label < 0) EXIT
             END DO        
             IF (icgrp == 0) THEN
                 ! new block
@@ -1725,34 +1696,18 @@ SUBROUTINE prpcon
             END IF
         END IF
         ! add to block
-        i=vecConsStart(icgb)+2
         matConsGroupIndex(2,icgb)=jcgb     
         matConsGroupIndex(3,icgb)=icgb     
-        DO
-            label=listConstraints(i)%label
-            itgbi=inone(label) ! -> ITGBI= index of parameter label
-            ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
-            IF(ivgb > 0) THEN
-                ! mark all related constraints
-                DO j=vecParConsOffsets(ivgb)+1,vecParConsOffsets(ivgb+1)
-                    matConsGroupIndex(1,vecParConsList(j))=icgrp
-                END DO
-            END IF    
-            i=i+1
-            IF(i > lenConstraints) EXIT
-            IF(listConstraints(i)%label < 0) EXIT
+        DO i=vecConsParOffsets(icgb)+1, vecConsParOffsets(icgb+1)
+            itgbi=vecConsParList(i)
+            globalParCons(itgbi)=icgrp
+            ! mark all related constraints
+            DO j=vecParConsOffsets(itgbi)+1,vecParConsOffsets(itgbi+1)
+                matConsGroupIndex(1,vecParConsList(j))=icgrp
+            END DO
         END DO
     END DO
-
-    ! dummy groups for empty constraints
-    IF (ncgbe /= 0) THEN
-        icgrp=ncgrp
-        DO jcgb=ncgb,1,-1 
-            IF (matConsGroupIndex(1,jcgb) > 0) CYCLE
-            matConsGroupIndex(1,jcgb) = icgrp
-            icgrp=icgrp-1
-        END DO
-    END IF
+    WRITE(*,*) 'GRPCON:',ncgrp,' disjoint constraints groups built'
 
     ! sort by group number
     CALL sort2i(matConsGroupIndex,ncgb)
@@ -1778,9 +1733,215 @@ SUBROUTINE prpcon
     matConsGroups(1,ncgrp+1)=ncgb+1
     matConsGroups(2,ncgrp+1)=ntgb+1
     
+    ! check for redundancy constraint groups
+    ncgbr=0
+    ncgrpr=0
+    ncgbd=0
+    ncgrpd=0
+    IF (icheck>0) THEN
+        PRINT *
+        PRINT *, ' cons.group  first con.  first par.   last par.       #cons        #par'
+    ENDIF    
+    DO icgrp=1,ncgrp
+        npar=0
+        DO i=matConsGroups(2,icgrp),matConsGroups(3,icgrp)
+            IF (globalParCons(i) > 0) npar=npar+1
+        END DO
+        ncon=matConsGroups(1,icgrp+1)-matConsGroups(1,icgrp)
+        IF (icheck>0) THEN
+            labelf=globalParLabelIndex(1,matConsGroups(2,icgrp))
+            labell=globalParLabelIndex(1,matConsGroups(3,icgrp))
+            PRINT *, icgrp, matConsGroups(1,icgrp), labelf, labell, ncon, npar
+        END IF    
+        ! redundancy constraints?
+        IF (ncon == npar) THEN
+            IF (irslvrc > 0) THEN
+                ncgrpr=ncgrpr+1
+                ncgbr=ncgbr+ncon
+                IF (icheck > 0) THEN
+                    labelf=globalParLabelIndex(1,matConsGroups(2,icgrp))
+                    labell=globalParLabelIndex(1,matConsGroups(3,icgrp))
+                    PRINT *, icgrp, matConsGroups(1,icgrp), labelf, labell, ' :  cons.group resolved'
+                END IF    
+                ! flag redundant parameters
+                DO i=matConsGroups(2,icgrp),matConsGroups(3,icgrp)
+                    IF (globalParCons(i) > 0) globalParCons(i)=-icgrp
+                END DO
+                ! flag constraint group 
+                matConsGroups(2,icgrp)=ntgb+1
+                matConsGroups(3,icgrp)=ntgb
+            ELSE
+                ncgrpd=ncgrpd+1
+                ncgbd=ncgbd+ncon
+                IF (icheck > 0) THEN
+                    labelf=globalParLabelIndex(1,matConsGroups(2,icgrp))
+                    labell=globalParLabelIndex(1,matConsGroups(3,icgrp))
+                    PRINT *, icgrp, matConsGroups(1,icgrp), labelf, labell, ' :  cons.group redundant'
+                END IF               
+            END IF
+        END IF
+    END DO
+    IF (ncgrpr > 0) THEN
+        WRITE(*,*) 'GRPCON:',ncgbr,' redundancy constraints in ', ncgrpr, ' groups resolved'
+        ! all constraint groups resolved ?
+        IF (ncgrpr == ncgrp) ncgrp=0
+    ENDIF 
+    IF (ncgrpd > 0) THEN
+        WRITE(*,*) 'GRPCON:',ncgbd,' redundancy constraints in ', ncgrpd, ' groups detected'
+    ENDIF
+    WRITE(*,*)
+         
     ! clean up
     CALL mpdealloc(vecParConsList)
+    CALL mpdealloc(vecConsParList)
     CALL mpdealloc(vecParConsOffsets)
+    CALL mpdealloc(vecConsParOffsets)
+    CALL mpdealloc(matConsGroupIndex)    
+
+END SUBROUTINE grpcon
+
+!> Prepare constraints.
+!!
+!! Count, sort constraints and split into disjoint blocks.
+
+SUBROUTINE prpcon
+    USE mpmod
+    USE mpdalc
+
+    IMPLICIT NONE
+    INTEGER(mpi) :: i
+    INTEGER(mpi) :: icgb
+    INTEGER(mpi) :: icgrp
+    INTEGER(mpi) :: ifrst
+    INTEGER(mpi) :: ilast
+    INTEGER(mpi) :: isblck
+    INTEGER(mpi) :: itgbi
+    INTEGER(mpi) :: ivgb
+    INTEGER(mpi) :: j
+    INTEGER(mpi) :: jcgb
+    INTEGER(mpi) :: jfrst
+    INTEGER(mpi) :: label
+    INTEGER(mpi) :: labelf
+    INTEGER(mpi) :: labell
+    INTEGER(mpi) :: ncon
+    INTEGER(mpi) :: ngrp
+    INTEGER(mpi) :: npar
+    INTEGER(mpi) :: ncnmxb
+    INTEGER(mpi) :: ncnmxg
+    INTEGER(mpi) :: nprmxb
+    INTEGER(mpi) :: nprmxg
+    INTEGER(mpi) :: inone
+    INTEGER(mpi) :: nvar
+
+    INTEGER(mpl):: length
+    INTEGER(mpl) :: rows
+    
+    INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: matConsGroupIndex
+
+    ncgbe=0
+    !
+    ! constraint groups already built in GRPCON based on steering,
+    ! now care about fixed parameters
+    !
+    IF(ncgrp == 0) THEN ! no constraints groups
+        ncgb=0
+        ncblck=0
+        RETURN
+    END IF
+
+    length=ncgrp+1; rows=3
+    ! start and parameter range of constraint blocks 
+    CALL mpalloc(matConsBlocks,rows,length,'start of constraint blocks, par. range (I)')
+    
+    length=ncgb; rows=2
+    CALL mpalloc(matConsGroupIndex,rows,length,'group index for constraint (I)')    
+    matConsGroupIndex=0   
+    
+    ! check for empty constraints, redefine (accepted/active) constraints and groups
+    ngrp=0
+    ncgb=0
+    DO icgrp=1,ncgrp
+        ncon=ncgb
+        ! resolved group ?
+        IF (matConsGroups(2,icgrp) > matConsGroups(3,icgrp)) CYCLE
+        DO jcgb=matConsGroups(1,icgrp),matConsGroups(1,icgrp+1)-1
+            icgb=matConsSort(3,jcgb)
+            i=vecConsStart(icgb)+2
+            npar=0
+            nvar=0
+            matConsRanges(1,icgb)=ntgb
+            matConsRanges(2,icgb)=1
+            DO
+                label=listConstraints(i)%label
+                itgbi=inone(label) ! -> ITGBI= index of parameter label
+                ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
+                npar=npar+1
+                IF(ivgb > 0) THEN
+                    nvar=nvar+1
+                    matConsRanges(1,icgb)=min(matConsRanges(1,icgb),ivgb)
+                    matConsRanges(2,icgb)=max(matConsRanges(2,icgb),ivgb)
+                ENDIF    
+                i=i+1
+                IF(i > lenConstraints) EXIT
+                IF(listConstraints(i)%label < 0) EXIT
+            END DO
+            IF (nvar == 0) ncgbe=ncgbe+1
+            IF (nvar > 0 .OR. iskpec == 0) THEN
+                ! constraint accepted (or kept)
+                ncgb=ncgb+1
+                matConsGroupIndex(1,ncgb)=ngrp+1    
+                matConsGroupIndex(2,ncgb)=icgb
+            END IF
+        END DO
+        IF (ncgb > ncon) ngrp=ngrp+1
+    END DO
+    ncgrp=ngrp       
+            
+    IF (ncgbe > 0) THEN
+        IF (iskpec > 0) THEN
+            WRITE(*,*) 'PRPCON:',ncgbe,' empty constraints skipped'
+        ELSE
+            WRITE(*,*) 'PRPCON:',ncgbe,' empty constraints detected, to be fixed !!!'
+            WRITE(*,*) '       (use option "skipemptycons" to skip those)'
+            IF (icheck == 0) THEN
+                icheck=2     ! switch to '-C'
+                ncgbe=-ncgbe ! indicate that
+                WRITE(*,*)
+                WRITE(*,*) '!!!   Switch to "-C" (checking input only), no calculation of a solution   !!!'
+                WRITE(8,*) '!!!   Switch to "-C" (checking input only), no calculation of a solution   !!!'
+                WRITE(*,*)
+            END IF
+        END IF
+    END IF
+    WRITE(*,*) 'PRPCON:',ncgb,' constraints accepted'
+    WRITE(*,*)
+    
+    IF(ncgb == 0) RETURN  ! no constraints left   
+
+    ! already sorted by group number
+               
+    matConsGroups(1,1:ncgrp)=0
+    DO jcgb=1,ncgb
+        ! set up matConsSort
+        icgb=matConsGroupIndex(2,jcgb)
+        matConsSort(1,jcgb)=matConsRanges(1,icgb)
+        matConsSort(2,jcgb)=matConsRanges(2,icgb)
+        matConsSort(3,jcgb)=icgb
+        ! set up matConsBlocks
+        icgrp=matConsGroupIndex(1,jcgb)
+        IF (matConsGroups(1,icgrp) == 0) THEN
+            matConsGroups(1,icgrp)=jcgb
+            matConsGroups(2,icgrp)=matConsRanges(1,icgb)     
+            matConsGroups(3,icgrp)=matConsRanges(2,icgb)
+        ELSE    
+            matConsGroups(2,icgrp)=min(matConsGroups(2,icgrp),matConsRanges(1,icgb))      
+            matConsGroups(3,icgrp)=max(matConsGroups(3,icgrp),matConsRanges(2,icgb))
+        END IF 
+    END DO
+    matConsGroups(1,ncgrp+1)=ncgb+1
+    matConsGroups(2,ncgrp+1)=ntgb+1
+    
+    ! clean up
     CALL mpdealloc(matConsGroupIndex)    
 
     ! loop over constraints groups, combine into non overlapping blocks
@@ -1887,7 +2048,7 @@ SUBROUTINE prpcon
                 globalParCons(itgbi)=icgrp ! save constraint group
             END DO
         END DO
-    END DO 
+    END DO
           
     IF (ncgrp+icheck > 1) THEN
         WRITE(*,*)
@@ -1897,7 +2058,6 @@ SUBROUTINE prpcon
         WRITE(*,*) '        max block size (cons., par.) ', ncnmxb, nprmxb
         IF (icheck > 0) WRITE(*,*) '        total block matrix sizes     ', mszcon, mszprd
     END IF    
-113 FORMAT(' constraint',i6,' : ',i9,' parameters,',i9,' variable')
 
 END SUBROUTINE prpcon
 
@@ -1982,7 +2142,8 @@ SUBROUTINE feasma
                 factr=listConstraints(j)%value
                 itgbi=inone(label) ! -> ITGBI= index of parameter label
                 ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
-                IF(ivgb > 0) matConstraintsT(INT(jcgb-ifirst,mpl)*INT(npar,mpl)+ivgb-ipar0+ioffc)=factr ! matrix element
+                IF(ivgb > 0) matConstraintsT(INT(jcgb-ifirst,mpl)*INT(npar,mpl)+ivgb-ipar0+ioffc)= &
+                  matConstraintsT(INT(jcgb-ifirst,mpl)*INT(npar,mpl)+ivgb-ipar0+ioffc)+factr ! matrix element
                 rhs=rhs-factr*globalParameter(itgbi)     ! reduce residuum
             END DO
             vecConsResiduals(jcgb)=rhs        ! constraint discrepancy
@@ -2111,7 +2272,7 @@ SUBROUTINE feasib(concut,iact)
     SAVE
 
     iact=0
-    IF(lenConstraints == 0) RETURN  ! no constraints
+    IF(ncgb == 0) RETURN  ! no constraints
 
     DO iter=1,2
         vecConsResiduals=0.0_mpd
@@ -5147,8 +5308,14 @@ SUBROUTINE prtstat
         icgrp=globalParCons(itgbi) ! constraints group
 
         IF (ivgbi <= 0) THEN
-            WRITE(lup,110) c1,itgbl,par,presig,icount,icgrp,ivgbi
+            ! not used
+            IF (ivgbi == -4) THEN
+                WRITE(lup,116) c1,itgbl,par,presig,icount,icgrp
+            ELSE   
+                WRITE(lup,110) c1,itgbl,par,presig,icount,icgrp,ivgbi
+            END IF         
         ELSE
+            ! variable
             WRITE(lup,111) c1,itgbl,par,presig,icount,icgrp
         END IF
     END DO
@@ -5243,6 +5410,7 @@ SUBROUTINE prtstat
 113 FORMAT(' * ',i6,i8,3i12)
 114 FORMAT(' *:',48X,i12,' ..',i12)
 115 FORMAT(' *.',i10,5i11)
+116 FORMAT(' !',a1,i10,2X,2G14.5,2i12,'  redundant')
 END SUBROUTINE prtstat    ! print input statistics
 
 
@@ -6471,6 +6639,9 @@ SUBROUTINE loop1
     WRITE(lunlog,*) 'LOOP1:',npresg,' is number of pre-sigmas'
     WRITE(*,*) 'LOOP1:',npresg,' is number of pre-sigmas'
     IF(npresg == 0) WRITE(*,*) 'Warning: no pre-sigmas defined'
+    
+    ! build constraint groups, check for redundancy constrints
+    CALL grpcon
 
     !     determine flag variable (active) or fixed (inactive) -------------
 
@@ -6480,7 +6651,9 @@ SUBROUTINE loop1
         IF (globalParPreSigma(i) < 0.0) THEN
             globalParLabelIndex(2,i)=-1     ! fixed (pre-sigma), not used in matrix (not active)
         ELSE IF(globalParCounts(i) < mreqenf) THEN
-            globalParLabelIndex(2,i)=-2     ! fixed (entries cut), not used in matrix (not active)        
+            globalParLabelIndex(2,i)=-2     ! fixed (entries cut), not used in matrix (not active) 
+        ELSE IF (globalParCons(i) < 0) THEN           
+            globalParLabelIndex(2,i)=-4     ! fixed (redundant), not used in matrix (not active)        
         ELSE
             indab=indab+1
             globalParLabelIndex(2,i)=indab  ! variable, used in matrix (active)        
@@ -11286,6 +11459,13 @@ SUBROUTINE intext(text,nline)
         mat=matint(text(keya:keyb),keystx,npat,ntext) ! comparison
         IF(100*mat >= 80*max(npat,ntext)) THEN ! 80% (symmetric) matching
             iskpec=1
+            RETURN
+        END IF
+        
+        keystx='resolveredundancycons'
+        mat=matint(text(keya:keyb),keystx,npat,ntext) ! comparison
+        IF(100*mat >= 80*max(npat,ntext)) THEN ! 80% (symmetric) matching
+            irslvrc=1
             RETURN
         END IF
 

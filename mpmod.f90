@@ -4,7 +4,7 @@
 !! \author Claus Kleinwort, DESY, 2012 (Claus.Kleinwort@desy.de)
 !!
 !! \copyright
-!! Copyright (c) 2012 - 2021 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2012 - 2023 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -102,6 +102,7 @@ MODULE mpmod
     INTEGER(mpi) :: icheck=0  !< flag for checking input only (no solution determined)
     INTEGER(mpi) :: iteren=0  !< entries cut is iterated for parameters with less entries (if > \ref mreqenf)
     INTEGER(mpi) :: iskpec=0  !< flag for skipping empty constraints (no variable parameters)
+    INTEGER(mpi) :: irslvrc=0 !< flag for resolving redundancy constraints (two equivalent parameter groups)
     INTEGER(mpi) :: imonit=0  !< flag for monitoring residuals per local fit cycle (=0: none, <0: all, bit 0: first, bit 1: last)
     INTEGER(mpi) :: measBins=100 !< number of bins per measurement for monitoring
     INTEGER(mpi) :: imonmd=0  !< monitoring mode: 0:residuals (normalized to average error), 1:pulls
