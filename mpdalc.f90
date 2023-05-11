@@ -4,7 +4,7 @@
 !! \author Claus Kleinwort, DESY, 2012 (Claus.Kleinwort@desy.de)
 !!
 !! \copyright
-!! Copyright (c) 2012 - 2015 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2012 - 2023 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -35,12 +35,14 @@ MODULE mpdalc
     !> allocate array
     INTERFACE mpalloc
         MODULE PROCEDURE mpallocdvec, mpallocfvec, mpallocivec, mpalloclvec, &
-            mpallocfarr, mpallociarr, mpalloclarr, mpalloclist, mpalloccvec
+            mpallocfarr, mpallociarr, mpalloclarr, mpalloclist, mpalloclistc, &
+            mpalloccvec
     END INTERFACE mpalloc
     !> deallocate array
     INTERFACE mpdealloc
         MODULE PROCEDURE mpdeallocdvec, mpdeallocfvec, mpdeallocivec, mpdealloclvec, &
-            mpdeallocfarr, mpdeallociarr, mpdealloclarr, mpdealloclist, mpdealloccvec
+            mpdeallocfarr, mpdeallociarr, mpdealloclarr, mpdealloclist, mpdealloclistc, &
+            mpdealloccvec
     END INTERFACE mpdealloc
 
 CONTAINS
@@ -135,6 +137,17 @@ CONTAINS
         ALLOCATE (array(length),stat=ifail)
         CALL mpalloccheck(ifail,((mps+mpi)*length)/mpi,text)
     END SUBROUTINE mpalloclist
+
+    !> allocate (1D) character list item array
+    SUBROUTINE mpalloclistc(array,length,text)
+        TYPE(listItemC), DIMENSION(:), INTENT(IN OUT), ALLOCATABLE :: array
+        INTEGER(mpl), INTENT(IN) :: length
+        CHARACTER (LEN=*), INTENT(IN) :: text
+
+        INTEGER(mpi) :: ifail
+        ALLOCATE (array(length),stat=ifail)
+        CALL mpalloccheck(ifail,((mpi+itemCLen)*length)/mpi,text)
+    END SUBROUTINE mpalloclistc
 
     !> allocate (1D) character array
     SUBROUTINE mpalloccvec(array,length,text)
@@ -256,6 +269,17 @@ CONTAINS
         DEALLOCATE (array,stat=ifail)
         CALL mpdealloccheck(ifail,isize)
     END SUBROUTINE mpdealloclist
+
+    !> deallocate (1D) character list item array
+    SUBROUTINE mpdealloclistc(array)
+        TYPE(listItemC), DIMENSION(:), INTENT(IN OUT), ALLOCATABLE :: array
+
+        INTEGER(mpi) :: ifail
+        INTEGER(mpl) :: isize
+        isize = ((mpi+itemCLen)*size(array,kind=mpl))/mpi
+        DEALLOCATE (array,stat=ifail)
+        CALL mpdealloccheck(ifail,isize)
+    END SUBROUTINE mpdealloclistc
 
     !> deallocate (1D) character array
     SUBROUTINE mpdealloccvec(array)

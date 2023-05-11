@@ -4,7 +4,7 @@
 !! \author Claus Kleinwort, DESY, 2012 (Claus.Kleinwort@desy.de)
 !!
 !! \copyright
-!! Copyright (c) 2012 - 2021 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2012 - 2023 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -41,4 +41,11 @@ MODULE mpdef
         INTEGER(mpi) :: label
         REAL(mpd) :: value
     END TYPE listItem
+    !> Character list items from steering file
+    INTEGER, PARAMETER :: itemCSize = 15                       !> size (in mpi words)
+    INTEGER, PARAMETER :: itemCLen = itemCSize*mpi             !> length
+    TYPE listItemC
+        INTEGER(mpi) :: label
+        CHARACTER(len = itemCLen) :: text
+    END TYPE listItemC
 END MODULE mpdef

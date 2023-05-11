@@ -169,6 +169,7 @@
 !! * 2305xx: Check for redundancy constraints: Constraint groups defining linear transformation between two groups
 !!   of equivalent global parameters. With the new command \ref cmd-resolveredundancycons they can be resolved
 !!   (to save resources and burden on numerics).
+!!   Optionally add (brief) \ref  ch-parcom "comments" for global parameters to annotate the results file.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -480,6 +481,16 @@
 !!   - For each constraint group the label ranges of (not contributing) paired global parameters.
 !!   - For each constraint group the appearance statistics (using the contributing global labels).
 !!
+!! \section ch-parcom Global parameter comments
+!! For each global parameter a \ref mpdef::itemclen "brief" **comment** can be defined to annotate the <tt>millepede.res</tt> text file.
+!! The syntax is similar as for the "Parameter" or "Constraint" keywords:
+!!
+!!         Comment
+!!         ...     ...
+!!         label   text
+!!         ...     ...
+!!
+
 
 !> \page option_page List of options and commands
 !!
@@ -1525,6 +1536,7 @@ SUBROUTINE grpcon
     INTEGER(mpi) :: label
     INTEGER(mpi) :: labelf
     INTEGER(mpi) :: labell
+    INTEGER(mpi) :: last
     INTEGER(mpi) :: line1
     INTEGER(mpi) :: ncon
     INTEGER(mpi) :: ndiff
@@ -1537,7 +1549,6 @@ SUBROUTINE grpcon
     INTEGER(mpi) :: ncgrpd
     INTEGER(mpi) :: ncgrpr
     INTEGER(mpi) :: next
-    INTEGER(mpi) :: last
 
     INTEGER(mpl):: length
     INTEGER(mpl) :: rows
@@ -1610,12 +1621,12 @@ SUBROUTINE grpcon
     globalParCons=0
     
     length=vecParConsOffsets(ntgb+1)
-    CALL mpalloc(vecConsParList,length,'constraint list for global par. (I)')
+    CALL mpalloc(vecConsParList,length,'global par. list for constraint (I)')
     CALL mpalloc(vecParConsList,length,'constraint list for global par. (I)')
-    
+
     IF (icheck>1) THEN
         print *, ' Constraint #parameters  #diff.par.  first par.   last par.  first line'
-    END IF    
+    END IF
     ! prepare
     i=1
     ioff=0
@@ -1658,7 +1669,7 @@ SUBROUTINE grpcon
             labelf=globalParLabelIndex(1,matConsRanges(1,icgb))
             labell=globalParLabelIndex(1,matConsRanges(2,icgb))
             PRINT *, icgb, npar, ndiff, labelf, labell, line1
-        END IF    
+        END IF
     END DO
     vecConsStart(ncgb+1)=lenConstraints+1
     
@@ -1675,7 +1686,7 @@ SUBROUTINE grpcon
     globalParCons=0
     DO jcgb=1,ncgb
         icgb=matConsSort(3,jcgb)
-        ! alredy part of block?
+        ! already part of block?
         icgrp=matConsGroupIndex(1,icgb)
         IF (icgrp == 0) THEN
             ! check all parameters
@@ -2129,7 +2140,7 @@ SUBROUTINE feasma
         ncon=ilast+1-ifirst               
         ipar0=matConsRanges(3,ifirst)-1    ! parameter offset
         npar=matConsRanges(4,ifirst)-ipar0 ! number of parameters
-        IF (npar <= 0) CYCLE               ! skip empty groups/cons.    
+        IF (npar <= 0) CYCLE               ! skip empty groups/cons.
         DO jcgb=ifirst,ilast
             ! index in list 
             icgb=matConsSort(3,jcgb)
@@ -5073,6 +5084,7 @@ SUBROUTINE prtglo
     REAL(mps):: err
     REAL(mps):: gcor
     INTEGER(mpi) :: i
+    INTEGER(mpi) :: icom
     INTEGER(mpi) :: icount
     INTEGER(mpi) :: ie
     INTEGER(mpi) :: iev
@@ -5115,6 +5127,8 @@ SUBROUTINE prtglo
     DO itgbi=1,ntgb  ! all parameter variables
         itgbl=globalParLabelIndex(1,itgbi)
         ivgbi=globalParLabelIndex(2,itgbi)
+        icom=globalParComments(itgbi) ! comment
+        IF (icom > 0) WRITE(lup,113) listComments(icom)%text
         par=REAL(globalParameter(itgbi),mps)      ! initial value
         icount=0 ! counts
         lowstat = .False.
@@ -5233,6 +5247,7 @@ SUBROUTINE prtglo
 110 FORMAT(i10,2X,2G14.5,28X,i12)
 111 FORMAT(i10,2X,3G14.5,14X,i12)
 112 FORMAT(i10,2X,4G14.5,i12)
+113 FORMAT('!',A)
 END SUBROUTINE prtglo    ! print final log file
 
 !***********************************************************************
@@ -5253,6 +5268,7 @@ SUBROUTINE prtstat
     IMPLICIT NONE
     REAL(mps):: par
     REAL(mps):: presig
+    INTEGER(mpi) :: icom
     INTEGER(mpi) :: icount
     INTEGER(mpi) :: ifrst
     INTEGER(mpi) :: ilast
@@ -5300,6 +5316,8 @@ SUBROUTINE prtstat
     DO itgbi=1,ntgb  ! all parameter variables
         itgbl=globalParLabelIndex(1,itgbi)
         ivgbi=globalParLabelIndex(2,itgbi)
+        icom=globalParComments(itgbi) ! comment
+        IF (icom > 0) WRITE(lup,117) listComments(icom)%text
         c1=' '
         IF (globalParLabelIndex(3,itgbi) == itgbl) c1='>'
         par=REAL(globalParameter(itgbi),mps)      ! initial value
@@ -5411,6 +5429,7 @@ SUBROUTINE prtstat
 114 FORMAT(' *:',48X,i12,' ..',i12)
 115 FORMAT(' *.',i10,5i11)
 116 FORMAT(' !',a1,i10,2X,2G14.5,2i12,'  redundant')
+117 FORMAT(' !!',a)
 END SUBROUTINE prtstat    ! print input statistics
 
 
@@ -6518,7 +6537,7 @@ SUBROUTINE loop1
     WRITE(lunlog,*) 'LOOP1: starting'
     CALL mstart('LOOP1')
     
-    !     add labels from parameter, constraints, measurements -------------
+    !     add labels from parameter, constraints, measurements, comments -------------
     DO i=1, lenParameters
         idum=inone(listParameters(i)%label)
     END DO
@@ -6530,6 +6549,9 @@ SUBROUTINE loop1
     END DO
     DO i=1, lenMeasurements
         idum=inone(listMeasurements(i)%label)
+    END DO
+    DO i=1, lenComments
+        idum=inone(listComments(i)%label)
     END DO
 
     IF(globalParHeader(-1) /= 0) THEN
@@ -6617,6 +6639,8 @@ SUBROUTINE loop1
     CALL mpalloc(globalParCounts,length,'global parameter counts')
     CALL mpalloc(globalParCons,length,'global parameter constraints')
     globalParCons=0
+    CALL mpalloc(globalParComments,length,'global parameter comments')
+    globalParComments=0
 
     DO i=1,lenParameters                  ! parameter start values
         param=listParameters(i)%value
@@ -6625,6 +6649,11 @@ SUBROUTINE loop1
             globalParameter(in)=param
             globalParStart(in)=param
         ENDIF
+    END DO
+
+    DO i=1, lenComments
+        in=inone(listComments(i)%label)
+        IF(in /= 0) globalParComments(in)=i
     END DO
 
     npresg=0
@@ -11141,6 +11170,7 @@ SUBROUTINE intext(text,nline)
     INTEGER(mpi) :: ib
     INTEGER(mpi) :: ier
     INTEGER(mpi) :: iomp
+    INTEGER(mpi) :: j
     INTEGER(mpi) :: k
     INTEGER(mpi) :: kkey
     INTEGER(mpi) :: label
@@ -11161,14 +11191,15 @@ SUBROUTINE intext(text,nline)
     INTEGER(mpi), INTENT(IN) :: nline
 
 #ifdef LAPACK64
-    PARAMETER (nkeys=5,nmeth=9)
+    PARAMETER (nkeys=6,nmeth=9)
 #else
-    PARAMETER (nkeys=5,nmeth=7)
+    PARAMETER (nkeys=6,nmeth=7)
 #endif    
     CHARACTER (LEN=16) :: methxt(nmeth)
     CHARACTER (LEN=16) :: keylst(nkeys)
     CHARACTER (LEN=32) :: keywrd
     CHARACTER (LEN=32) :: keystx
+    CHARACTER (LEN=itemCLen) :: ctext
     INTEGER(mpi), PARAMETER :: mnum=100
     REAL(mpd) :: dnum(mnum)
     INTEGER(mpi) :: lpvs    ! ... integer
@@ -11182,9 +11213,16 @@ SUBROUTINE intext(text,nline)
             INTEGER(mpi), INTENT(IN) :: label
             REAL(mpd), INTENT(IN) :: value
         END SUBROUTINE addItem
+        SUBROUTINE addItemC(length,list,label,text)
+            USE mpmod
+            INTEGER(mpi), INTENT(IN OUT) :: length
+            TYPE(listItemC), DIMENSION(:), INTENT(IN OUT), ALLOCATABLE :: list
+            INTEGER(mpi), INTENT(IN) :: label
+            CHARACTER(LEN = itemCLen), INTENT(IN) :: text
+        END SUBROUTINE addItemC
     END INTERFACE
 
-    DATA keylst/'unknown','parameter','constraint','measurement','method'/
+    DATA keylst/'unknown','parameter','constraint','measurement','method','comment'/
 
     SAVE
 #ifdef LAPACK64
@@ -11768,7 +11806,6 @@ SUBROUTINE intext(text,nline)
                 WRITE(*,*) 'Status: new keyword measurement'
                 WRITE(*,*) '> ',text(1:nab)
             END IF
-    
         ELSE IF(lkey == 5.AND.keyb < keyc) THEN         ! method with text argument
             miter=mitera
             IF(nums >= 1) miter=NINT(dnum(1),mpi)
@@ -11870,7 +11907,25 @@ SUBROUTINE intext(text,nline)
                 WRITE(*,*) 'Status continuation measurement'
                 WRITE(*,*) '> ',text(1:nab)
             END IF
-    
+        ELSE IF(lkey == 6) THEN         ! comment
+            IF(nums == 1) THEN
+                lpvs=NINT(dnum(1),mpi)  ! label
+                IF(lpvs /= 0) THEN
+                    ! skip label
+                    DO j=ia,ib
+                        IF (text(j:j) == ' ') EXIT
+                    END DO
+                    ctext=text(j:ib)
+                    CALL addItemC(lenComments,listComments,lpvs,ctext)
+                ELSE
+                    WRITE(*,*) 'Line',nline,' error, label=',lpvs
+                END IF
+            ELSE IF(nums /= 0) THEN
+                kkey=1   ! switch to "unknown"
+                WRITE(*,*) 'Wrong text in line',nline
+                WRITE(*,*) 'Status: continuation comment'
+                WRITE(*,*) '> ',text(1:nab)
+            END IF
         END IF
     END IF
 END SUBROUTINE intext
@@ -11916,6 +11971,48 @@ SUBROUTINE addItem(length,list,label,value)
     list(length)%value=value
 
 END SUBROUTINE addItem
+
+!> add character item to list
+!!
+!! \param [in,out]    length     length of list
+!! \param [in,out]    list       list of items
+!! \param [in]        label      item label
+!! \param [in]        text      item text
+!!
+SUBROUTINE addItemC(length,list,label,text)
+    USE mpdef
+    USE mpdalc
+
+    INTEGER(mpi), INTENT(IN OUT) :: length
+    TYPE(listItemC), DIMENSION(:), INTENT(IN OUT), ALLOCATABLE :: list
+    INTEGER(mpi), INTENT(IN) :: label
+    CHARACTER(len = itemCLen), INTENT(IN) :: text
+
+    INTEGER(mpl) :: newSize
+    INTEGER(mpl) :: oldSize
+    TYPE(listItemC), DIMENSION(:), ALLOCATABLE :: tempList
+
+    IF (label > 0.AND.text == '') RETURN ! skip empty text for valid labels
+    IF (length == 0 ) THEN  ! initial list with size = 100
+        newSize = 100
+        CALL mpalloc(list,newSize,' list ')
+    ENDIF
+    oldSize=size(list,kind=mpl)
+    IF (length >= oldSize) THEN ! increase sizeby 20% + 100
+        newSize = oldSize + oldSize/5 + 100
+        CALL mpalloc(tempList,oldSize,' temp. list ')
+        tempList=list
+        CALL mpdealloc(list)
+        CALL mpalloc(list,newSize,' list ')
+        list(1:oldSize)=tempList(1:oldSize)
+        CALL mpdealloc(tempList)
+    ENDIF
+    ! add to end of list
+    length=length+1
+    list(length)%label=label
+    list(length)%text=text
+
+END SUBROUTINE addItemC
 
 !> Start of 'module' printout.
 SUBROUTINE mstart(text)

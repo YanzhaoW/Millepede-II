@@ -195,6 +195,7 @@ MODULE mpmod
     REAL(mpd), DIMENSION(:), ALLOCATABLE :: globalParPreWeight !< weight from pre-sigma
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: globalParCounts !< global parameters counts (from binary files)
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: globalParCons !< global parameters (number of) constraints
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: globalParComments !< global parameters comments
     ! global matrix, vector
     REAL(mpd), DIMENSION(:), ALLOCATABLE :: globalMatD !< global matrix 'A' (double, full or sparse)
     REAL(mps), DIMENSION(:), ALLOCATABLE :: globalMatF !< global matrix 'A' (float part for compressed sparse)
@@ -319,6 +320,8 @@ MODULE mpmod
     INTEGER(mpi) :: numMeasurements=0 !< number of (external) measurements from steering file
     INTEGER(mpi) :: lenMeasurements=0 !< length of list of (external) measurements from steering file
     TYPE(listItem), DIMENSION(:), ALLOCATABLE :: listMeasurements !< list of (external) measurements from steering file
+    INTEGER(mpi) :: lenComments=0  !< length of list of (global parameter) comments from steering file
+    TYPE(listItemC), DIMENSION(:), ALLOCATABLE :: listComments  !< list of comments from steering file
     !======================================================
     ! file information
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: mfd   !< file mode: cbinary =1, text =2, fbinary=3
