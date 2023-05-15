@@ -27,23 +27,23 @@ MODULE mpdef
     ! precision constants
     !obsolete INTRINSIC :: selected_real_kind
     !obsolete INTRINSIC :: selected_int_kind
-    INTEGER, PARAMETER :: mpi4  = selected_int_kind(9)         !>  4 byte integer
-    INTEGER, PARAMETER :: mpi8  = selected_int_kind(18)        !>  8 byte integer
-    INTEGER, PARAMETER :: mpr4  = selected_real_kind(6, 37)    !>  4 byte float
-    INTEGER, PARAMETER :: mpr8  = selected_real_kind(15, 307)  !>  8 byte float
-    INTEGER, PARAMETER :: mpr16 = selected_real_kind(33, 4931) !> 16 byte float, gcc needs libquadmath    INTEGER, PARAMETER :: mpi = selected_int_kind(9)         !>  4 byte integer
-    INTEGER, PARAMETER :: mpi  = mpi4                          !>  integer
-    INTEGER, PARAMETER :: mpl  = mpi8                          !>  long integer
-    INTEGER, PARAMETER :: mps  = mpr4                          !>  single precision
-    INTEGER, PARAMETER :: mpd  = mpr8                          !>  double precision
+    INTEGER, PARAMETER :: mpi4  = selected_int_kind(9)         !<  4 byte integer
+    INTEGER, PARAMETER :: mpi8  = selected_int_kind(18)        !<  8 byte integer
+    INTEGER, PARAMETER :: mpr4  = selected_real_kind(6, 37)    !<  4 byte float
+    INTEGER, PARAMETER :: mpr8  = selected_real_kind(15, 307)  !<  8 byte float
+    INTEGER, PARAMETER :: mpr16 = selected_real_kind(33, 4931) !< 16 byte float, gcc needs libquadmath
+    INTEGER, PARAMETER :: mpi  = mpi4                          !<  integer
+    INTEGER, PARAMETER :: mpl  = mpi8                          !<  long integer
+    INTEGER, PARAMETER :: mps  = mpr4                          !<  single precision
+    INTEGER, PARAMETER :: mpd  = mpr8                          !<  double precision
     !> list items from steering file
     TYPE listItem
         INTEGER(mpi) :: label
         REAL(mpd) :: value
     END TYPE listItem
-    !> Character list items from steering file
-    INTEGER, PARAMETER :: itemCSize = 15                       !> size (in mpi words)
-    INTEGER, PARAMETER :: itemCLen = itemCSize*mpi             !> length
+    INTEGER, PARAMETER :: itemCSize = 15                       !< comment size (in mpi words)
+    INTEGER, PARAMETER :: itemCLen = itemCSize*mpi             !< comment length (60 characters)
+    !> character list items from steering file
     TYPE listItemC
         INTEGER(mpi) :: label
         CHARACTER(len = itemCLen) :: text
