@@ -100,6 +100,7 @@ MODULE mpmod
     INTEGER(mpi) :: iwcons=0  !< flag for weighting of constraints (>0: weighting with \ref globalparcounts "globalParCounts", else: none)
     INTEGER(mpi) :: icelim=1  !< flag for using elimination (instead of multipliers) for constraints
     INTEGER(mpi) :: icheck=0  !< flag for checking input only (no solution determined)
+    INTEGER(mpi) :: ichkpg=0  !< flag for checking (rank of) parameter groups
     INTEGER(mpi) :: iteren=0  !< entries cut is iterated for parameters with less entries (if > \ref mreqenf)
     INTEGER(mpi) :: iskpec=0  !< flag for skipping empty constraints (no variable parameters)
     INTEGER(mpi) :: irslvrc=0 !< flag for resolving redundancy constraints (two equivalent parameter groups)
@@ -157,6 +158,7 @@ MODULE mpmod
     INTEGER(mpi) :: npresg !< number of pre-sigmas
     INTEGER(mpi) :: nrecal !< number of records
     INTEGER(mpi) :: ndefec=0 !< rank deficit for global matrix (from inversion)
+    INTEGER(mpi) :: ndefpg=0 !< number of parameter groups with rank deficit (from inversion)
     INTEGER(mpi) :: nmiss1=0 !< rank deficit for constraints
     INTEGER(mpi) :: nalow=0 !< (sum of) global parameters with too few accepted entries
     INTEGER(mpi) :: nxlow=0 !< (max of) global parameters with too few accepted entries for icalcm=1

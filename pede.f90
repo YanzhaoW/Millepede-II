@@ -170,6 +170,8 @@
 !!   of equivalent global parameters. With the new command \ref cmd-resolveredundancycons they can be resolved
 !!   (to save resources and burden on numerics).
 !!   Optionally add (brief) \ref  ch-parcom "comments" for global parameters to annotate the results file.
+!! * 230516: New command \ref cmd-checkpargroups to check (the rank (linear independency of
+!!   global derivatives) for) (global) \ref ch-pargroup "parameter groups".
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -545,6 +547,9 @@
 !! For mpmod::icheck "icheck" >0 no solution is performed but input statistics is checked in detail.
 !! With mpmod::icheck "icheck" >1 the appearance range (first/last file,record and number of files)
 !! of global parameters is determined too.
+!! \subsection cmd-checkpargroups checkparametergroups
+!! Set flag \ref mpmod::ichkpg "ichkpg" to 1 (true) to enable the checking of
+!! (the rank of) \ref ch-pargroup "parameter groups".
 !! \subsection cmd-chisqcut chisqcut
 !! For local fit \ref an-chisq "setChi^2" cut \ref mpmod::chicut "chicut" to \a number1 [1.],
 !! \ref mpmod::chirem "chirem" to \a number2 [1.].
@@ -3452,7 +3457,11 @@ SUBROUTINE loopn
                     END DO
                 END DO
             END IF
-        END IF   
+        END IF
+        IF (ichkpg > 0) THEN
+            ! check parameter groups
+            CALL ckpgrp
+        END IF
     END IF
 
     ! check entries/counters
@@ -10206,6 +10215,7 @@ SUBROUTINE xloopn                !
     IF(nmiss1 /= 0) warnerss=.TRUE.
     IF(iagain /= 0) warnerss=.TRUE.
     IF(ndefec /= 0) warnerss=.TRUE.
+    IF(ndefpg /= 0) warnerss=.TRUE.
     warners3 = .FALSE. ! more severe warnings
     IF(nrderr /= 0) warners3=.TRUE.
 
@@ -10248,7 +10258,14 @@ SUBROUTINE xloopn                !
                 '  for global matrix, should be 0'
             WRITE(*,*) '        => please provide correct mille data'
         END IF
-        
+
+        IF(ndefpg /= 0) THEN
+            WRITE(*,199) ' '
+            WRITE(*,*) '        Rank defect for',ndefpg,  &
+                ' parameter groups, should be 0'
+            WRITE(*,*) '        => please provide correct mille data'
+        END IF
+
         IF(nmiss1 /= 0) THEN
             WRITE(*,199) ' '
             WRITE(*,*) '        Rank defect =',nmiss1,  &
@@ -11584,6 +11601,13 @@ SUBROUTINE intext(text,nline)
             RETURN
         END IF
 
+        keystx='checkparametergroups'
+        mat=matint(text(keya:keyb),keystx,npat,ntext) ! comparison
+        IF(100*mat >= 80*max(npat,ntext)) THEN ! 80% (symmetric) matching
+            ichkpg=1
+            RETURN
+        END IF
+
         keystx='monitorresiduals'
         mat=matint(text(keya:keyb),keystx,npat,ntext) ! comparison
         IF(100*mat >= 80*max(npat,ntext)) THEN ! 80% (symmetric) matching
@@ -12382,38 +12406,118 @@ SUBROUTINE binrwd(kfile)
     END IF
 
 END SUBROUTINE binrwd
+
+!> Check (rank of) parameter groups.
+SUBROUTINE ckpgrp
+    USE mpmod
+    USE mpdalc
+
+    IMPLICIT NONE
+    INTEGER(mpi) :: i
+    INTEGER(mpi) :: ipgrp
+    INTEGER(mpi) :: irank
+    INTEGER(mpi) :: isize
+    INTEGER(mpi) :: ivoff
+    INTEGER(mpi) :: itgbi
+    INTEGER(mpi) :: j
+    INTEGER(mpi) :: msize
+    INTEGER(mpi), PARAMETER :: mxsize = 1000
+    INTEGER(mpl):: ij
+    INTEGER(mpl):: length
+
+    REAL(mpd), DIMENSION(:), ALLOCATABLE :: auxVectorD
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: auxVectorI
+    REAL(mpd), DIMENSION(:), ALLOCATABLE :: resParGroup
+    REAL(mpd), DIMENSION(:), ALLOCATABLE :: blockParGroup
+    REAL(mpd) :: matij
+    SAVE
+
+    ! maximal group size
+    msize=0
+    DO ipgrp=1,nvpgrp
+        isize=globalAllIndexGroups(ipgrp+1)-globalAllIndexGroups(ipgrp)
+        IF (isize <= mxsize) THEN
+            msize=max(msize,isize)
+        ELSE
+            PRINT *, ' CKPGRP: par. group', ipgrp, ' not checked -- too large: ', isize
+        END IF
+    END DO
+    IF (msize == 0) RETURN
+
+    ! (matrix) block for parameter groups
+    length=INT(msize,mpl)*(INT(msize,mpl)+1)/2
+    CALL mpalloc(blockParGroup,length,'(matrix) block for parameter groups (D)')
+    length=msize
+    CALL mpalloc(resParGroup,length,'residuals for parameter groups (D)')  ! double aux 1
+    CALL mpalloc(auxVectorI,length,'auxiliary array (I)')  ! int aux 1
+    CALL mpalloc(auxVectorD,length,'auxiliary array (D)')  ! double aux 1
+
+    resParGroup=0
+    PRINT *
+    PRINT *,' CKPGRP   par. group first label        size        rank'
+    DO ipgrp=1,nvpgrp
+        isize=globalAllIndexGroups(ipgrp+1)-globalAllIndexGroups(ipgrp)
+        IF (isize > mxsize) CYCLE
+        ! copy matrix block
+        ivoff=globalAllIndexGroups(ipgrp)-1
+        ij=0
+        DO i=1,isize
+            DO j=1,i
+                ij=ij+1
+                blockParGroup(ij)=matij(ivoff+i,ivoff+j)
+            END DO
+        END DO
+        ! inversion of matrix block
+        CALL sqminv(blockParGroup,resParGroup,isize,irank, auxVectorD, auxVectorI)
+        !
+        itgbi=globalParVarToTotal(globalAllIndexGroups(ipgrp))
+        IF (isize == irank) THEN
+            PRINT *,' CKPGRP ', ipgrp, globalParLabelIndex(1,itgbi), isize, irank
+        ELSE
+            ndefpg=ndefpg+1
+            PRINT *,' CKPGRP ', ipgrp, globalParLabelIndex(1,itgbi), isize, irank, '  rank deficit !!!'
+        END IF
+    END DO
+
+    ! clean up
+    CALL mpdealloc(auxVectorD)
+    CALL mpdealloc(auxVectorI)
+    CALL mpdealloc(resParGroup)
+    CALL mpdealloc(blockParGroup)
+
+END SUBROUTINE ckpgrp
                     
 !> Check global matrix.
 SUBROUTINE chkmat
     USE mpmod
 
+    IMPLICIT NONE
     INTEGER(mpl) :: i
     INTEGER(mpl) :: nan
     INTEGER(mpl) :: neg
     
-    print *
-    print *, ' Checking global matrix(D) for NANs ', size(globalMatD,kind=mpl)
+    PRINT *, ' Checking global matrix(D) for NANs ', size(globalMatD,kind=mpl)
     nan=0
     DO i=1,size(globalMatD,kind=mpl)
         IF(.NOT.(globalMatD(i) <= 0.0_mpd).AND..NOT.(globalMatD(i) > 0.0_mpd)) THEN
             nan=nan+1
-            print *, ' i, nan ', i, nan
+            PRINT *, ' i, nan ', i, nan
         END IF    
     END DO
 
     IF (matsto > 1) RETURN
-    print *
-    print *, ' Checking diagonal elements ', nagb
+    PRINT *
+    PRINT *, ' Checking diagonal elements ', nagb
     neg=0
     DO i=1,nagb
         IF(.NOT.(globalMatD(globalRowOffsets(i)+i) > 0.0_mpd)) THEN
             neg=neg+1
-            print *, ' i, neg ', i, neg
+            PRINT *, ' i, neg ', i, neg
         END IF 
     END DO
-    print *
-    print *, ' CHKMAT summary ', nan, neg
-    print *
+    PRINT *
+    PRINT *, ' CHKMAT summary ', nan, neg
+    PRINT *
     
 END SUBROUTINE chkmat 
 
