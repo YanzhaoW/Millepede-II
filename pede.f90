@@ -553,6 +553,8 @@
 !! \subsection cmd-chisqcut chisqcut
 !! For local fit \ref an-chisq "setChi^2" cut \ref mpmod::chicut "chicut" to \a number1 [1.],
 !! \ref mpmod::chirem "chirem" to \a number2 [1.].
+!! \subsection cmd-comment comment
+!! Define \ref ch-parcom "comments" for global parameters.
 !! \subsection cmd-compress compress
 !! Obsolete. Compression is default.
 !! \subsection cmd-closeandreopen closeandreopen
@@ -4651,11 +4653,14 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                     dvar=0.0_mpd
                     DO j=1,jb-ja-1
                         ij=readBufferDataI(ja+j)
-                        DO k=1,jb-ja-1
+                        jk=(ij*ij-ij)/2        ! index in symmetric matrix, row offset
+                        ! off diagonal (symmetric)
+                        DO k=1,j-1
                             ik=readBufferDataI(ja+k)
-                            jk=(ij*ij-ij)/2+ik        ! index in symmetric matrix
-                            dvar=dvar+clmat(jk)*REAL(readBufferDataD(ja+j),mpd)*REAL(readBufferDataD(ja+k),mpd)
+                            dvar=dvar+clmat(jk+ik)*REAL(readBufferDataD(ja+j),mpd)*REAL(readBufferDataD(ja+k),mpd)*2.0_mpd
                         END DO
+                        ! diagonal
+                        dvar=dvar+clmat(jk+ij)*REAL(readBufferDataD(ja+j),mpd)*REAL(readBufferDataD(ja+j),mpd)
                     END DO
                     !          some variance left to define a pull?
                     IF (0.999999_mpd/wght > dvar) THEN
