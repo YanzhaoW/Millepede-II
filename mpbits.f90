@@ -5,7 +5,7 @@
 !! \author Claus Kleinwort, DESY (maintenance and developement)
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2022 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2023 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -199,6 +199,7 @@ END SUBROUTINE clbits
 !!
 SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
     USE mpbits
+    USE mpdalc
     IMPLICIT NONE
 
     INTEGER(mpi), DIMENSION(:), INTENT(IN) :: npgrp
@@ -212,6 +213,7 @@ SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
     INTEGER(mpi) :: ichunk
     INTEGER(mpi) :: i
     INTEGER(mpi) :: j
+    INTEGER(mpi) :: jcol
     INTEGER(mpi) :: last
     INTEGER(mpi) :: lrgn
     INTEGER(mpi) :: next
@@ -231,13 +233,20 @@ SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
     INTEGER(mpl) :: nin
     INTEGER(mpl) :: npar
     INTEGER(mpl) :: ntot
+    INTEGER(mpl) :: nskyln
     INTEGER(mpl) :: noffi
     INTEGER(mpl) :: noffj
     REAL(mps) :: cpr
     REAL(mps) :: fracu
+    REAL(mps) :: fracs
     REAL(mps) :: fracz
     LOGICAL :: btest
     !$    INTEGER(mpi) :: OMP_GET_THREAD_NUM
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: lastRowInCol
+
+    ll=INT(n,mpl)*INT(nthrd,mpl)
+    CALL mpalloc(lastRowInCol,ll,'NDBITS: last (non zero) row in col.')
+    lastRowInCol=0
 
     nd=npgrp(n+1)-npgrp(1) ! number of diagonal elements
 
@@ -300,6 +309,8 @@ SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
                 IF (next /= last) THEN
                     irgn(next)=irgn(next)+1
                 END IF
+                jcol=j+iproc*n
+                lastRowInCol(jcol)=max(lastRowInCol(jcol),i)
             END IF
             last=next
             ! save condensed bitfield
@@ -415,9 +426,28 @@ SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
         ll=0
     END DO
 
+    ! look at skyline
+    ! first combine threads
+    ll=n
+    DO j=2,nthrd
+        DO i=1,n
+            ll=ll+1
+            lastRowInCol(i)=max(lastRowInCol(i),lastRowInCol(ll))
+        END DO
+    END DO
+    ! sumup
+    nskyln=0
+    DO i=1,n
+        npar=npgrp(lastRowInCol(i)+1)-npgrp(i)
+        nskyln=nskyln+npar*(npgrp(i+1)-npgrp(i))
+    END DO
+    ! cleanup
+    CALL mpdealloc(lastRowInCol)
+
     nin=ndims(3)+ndims(4)
     fracz=200.0*REAL(ntot,mps)/REAL(nd,mps)/REAL(nd-1,mps)
     fracu=200.0*REAL(nin,mps)/REAL(nd,mps)/REAL(nd-1,mps)
+    fracs=200.0*REAL(nskyln,mps)/REAL(nd,mps)/REAL(nd+1,mps)
     WRITE(*,*) ' '
     WRITE(*,*) 'NDBITS: number of diagonal elements',nd
     WRITE(*,*) 'NDBITS: number of used off-diagonal elements',nin
@@ -425,6 +455,7 @@ SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
     WRITE(*,1000) 'fraction of used off-diagonal elements', fracu
     cpr=100.0*REAL(mpi*ndims(2)+mpd*ndims(3)+mps*ndims(4),mps)/REAL((mpd+mpi)*nin,mps)
     WRITE(*,1000) 'compression ratio for off-diagonal elements', cpr
+    WRITE(*,1000) 'fraction inside skyline ', fracs
 1000 FORMAT(' NDBITS: ',a,f6.2,' %')
     RETURN
 END SUBROUTINE ndbits

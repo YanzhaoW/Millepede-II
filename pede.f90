@@ -53,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-13-03 \
+!!         git clone --depth 1 --branch V04-13-04 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -172,6 +172,7 @@
 !!   Optionally add (brief) \ref  ch-parcom "comments" for global parameters to annotate the results file.
 !! * 230516: New command \ref cmd-checkpargroups to check (the rank (linear independency of
 !!   global derivatives) for) (global) \ref ch-pargroup "parameter groups".
+!! * 230617: Fix problem with monitoring of residuals. Calculate *skyline* fraction for sparse matrices.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
