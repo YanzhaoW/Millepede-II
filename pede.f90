@@ -53,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-13-04 \
+!!         git clone --depth 1 --branch V04-13-05 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -173,6 +173,7 @@
 !! * 230516: New command \ref cmd-checkpargroups to check (the rank (linear independency of
 !!   global derivatives) for) (global) \ref ch-pargroup "parameter groups".
 !! * 230617: Fix problem with monitoring of residuals. Calculate *skyline* fraction for sparse matrices.
+!! * 230822: Fix problem for block diagonal global matrix (keeping single block).
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -1494,7 +1495,7 @@ SUBROUTINE addcst
             label=listConstraints(j)%label
             factr=listConstraints(j)%value
             itgbi=inone(label) ! -> ITGBI= index of parameter label
-            ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
+            ivgb =globalParLabelIndex(2,itgbi) ! index of variable global parameter
   
             IF(icalcm == 1.AND.nagb > nvgb.AND.ivgb > 0) THEN
                 CALL mupdat(nvgb+jcgb,ivgb,factr) ! add to matrix
@@ -1698,7 +1699,7 @@ SUBROUTINE grpcon
             labell=globalParLabelIndex(1,matConsRanges(2,icgb))
             PRINT *, jcgb, npar, labelf, labell, line1
         END IF
-        ! already part of block?
+        ! already part of group?
         icgrp=matConsGroupIndex(1,icgb)
         IF (icgrp == 0) THEN
             ! check all parameters
@@ -1707,18 +1708,18 @@ SUBROUTINE grpcon
                 ! check all related constraints
                 DO j=vecParConsOffsets(itgbi)+1,vecParConsOffsets(itgbi+1)
                     icgrp=matConsGroupIndex(1,vecParConsList(j))
-                    ! already part of block?
+                    ! already part of group?
                     IF (icgrp > 0) EXIT
                 END DO
                 IF (icgrp > 0) EXIT
             END DO        
             IF (icgrp == 0) THEN
-                ! new block
+                ! new group
                 ncgrp=ncgrp+1
                 icgrp=ncgrp
             END IF
         END IF
-        ! add to block
+        ! add to group
         matConsGroupIndex(2,icgb)=jcgb     
         matConsGroupIndex(3,icgb)=icgb     
         DO i=vecConsParOffsets(icgb)+1, vecConsParOffsets(icgb+1)
@@ -1742,7 +1743,7 @@ SUBROUTINE grpcon
         matConsSort(1,jcgb)=matConsRanges(1,icgb)
         matConsSort(2,jcgb)=matConsRanges(2,icgb)
         matConsSort(3,jcgb)=icgb
-        ! set up matConsBlocks
+        ! set up matConsGroups
         icgrp=matConsGroupIndex(1,jcgb)
         IF (matConsGroups(1,icgrp) == 0) THEN
             matConsGroups(1,icgrp)=jcgb
@@ -1825,7 +1826,7 @@ END SUBROUTINE grpcon
 
 !> Prepare constraints.
 !!
-!! Count, sort constraints and split into disjoint blocks.
+!! Check constraints, combine groups into non overlapping blocks.
 
 SUBROUTINE prpcon
     USE mpmod
@@ -1956,7 +1957,7 @@ SUBROUTINE prpcon
         matConsSort(1,jcgb)=matConsRanges(1,icgb)
         matConsSort(2,jcgb)=matConsRanges(2,icgb)
         matConsSort(3,jcgb)=icgb
-        ! set up matConsBlocks
+        ! set up matConsGroups
         icgrp=matConsGroupIndex(1,jcgb)
         IF (matConsGroups(1,icgrp) == 0) THEN
             matConsGroups(1,icgrp)=jcgb
@@ -3577,7 +3578,7 @@ SUBROUTINE loopn
             END IF
             !      add to vector
             ivgbij=0
-            IF(itgbij /= 0) ivgbij=globalParLabelIndex(2,itgbij) ! variable-parameter index
+            IF(itgbij /= 0) ivgbij=globalParLabelIndex(2,itgbij) ! index of variable global parameter
             IF(ivgbij > 0) THEN
                 globalVector(ivgbij)=globalVector(ivgbij) -weight*dsum*factrj ! vector
                 globalCounter(ivgbij)=globalCounter(ivgbij)+1
@@ -3589,7 +3590,7 @@ SUBROUTINE loopn
                     itgbik=inone(listMeasurements(k)%label) ! total parameter index
                     !          add to matrix
                     ivgbik=0
-                    IF(itgbik /= 0) ivgbik=globalParLabelIndex(2,itgbik) ! variable-parameter index
+                    IF(itgbik /= 0) ivgbik=globalParLabelIndex(2,itgbik) ! index of variable global parameter
                     IF(ivgbij > 0.AND.ivgbik > 0) THEN    !
                         CALL mupdat(ivgbij,ivgbik,weight*factrj*factrk)
                     END IF
@@ -4166,7 +4167,6 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     INTEGER(mpi) :: iprdbg
     INTEGER(mpi) :: iproc
     INTEGER(mpi) :: irbin
-    INTEGER(mpi) :: irow
     INTEGER(mpi) :: isize
     INTEGER(mpi) :: ist
     INTEGER(mpi) :: iter
@@ -4470,7 +4470,6 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
         DO i=1, 2*nalc
             ibandh(i)=0
         END DO
-        irow=1
         idiag=1
         ndfsd=0
   
@@ -4869,7 +4868,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             !         global-global matrix contribution: add directly to gg-matrix
     
             DO j=1,ist-jb
-                ivgbj=globalParLabelIndex(2,readBufferDataI(jb+j))     ! variable-parameter index
+                ivgbj=globalParLabelIndex(2,readBufferDataI(jb+j))     ! index of variable global parameter
                 IF(ivgbj > 0) THEN
                     globalVector(ioffb+ivgbj)=globalVector(ioffb+ivgbj)  &
                         +dw1*wght*rmeas*REAL(readBufferDataD(jb+j),mpd) ! vector  !!! reverse
@@ -7142,7 +7141,6 @@ SUBROUTINE loop2
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsGroupIndex
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecPairedParGroups
 
-
     INTERFACE ! needed for assumed-shape dummy arguments
         SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
             USE mpdef
@@ -7195,7 +7193,7 @@ SUBROUTINE loop2
     
     ! prepare constraints - determine number of constraints NCGB
     !                     - sort and split into blocks
-    !                     -  update globalIndexRanges
+    !                     - update globalIndexRanges
     CALL prpcon
 
     IF (metsol == 3.AND.icelim <= 0) THEN
@@ -7602,7 +7600,7 @@ SUBROUTINE loop2
         dstat(k)=dstat(k)/REAL(nrec,mpd)
     END DO
     !     end=of=data=end=of=data=end=of=data=end=of=data=end=of=data=end=of
-    
+
     IF (icheck > 0.AND. ncgrp > 0) THEN
         CALL mpdealloc(vecConsGroupIndex)
         CALL mpdealloc(vecConsGroupList)
@@ -7787,7 +7785,7 @@ SUBROUTINE loop2
             WRITE(*,*) 'Using block diagonal storage mode'
         ELSE
             ! keep single block = full matrix
-            DO i=1,3
+            DO i=1,2
                 matParBlockOffsets(i,2)=matParBlockOffsets(i,npblck+1) 
             END DO
             npblck=1
