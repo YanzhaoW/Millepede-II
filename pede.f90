@@ -53,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-13-05 \
+!!         git clone --depth 1 --branch V04-13-06 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -174,6 +174,7 @@
 !!   global derivatives) for) (global) \ref ch-pargroup "parameter groups".
 !! * 230617: Fix problem with monitoring of residuals. Calculate *skyline* fraction for sparse matrices.
 !! * 230822: Fix problem for block diagonal global matrix (keeping single block).
+!! * 231020: Define proper \ref par-linesearch "line search" parameters for LAPACK too.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -9774,7 +9775,7 @@ SUBROUTINE xloopn                !
         minf=2
     ELSE IF(metsol == 3) THEN
         wolfc2=0.5             ! not acurate
-        minf=2
+        minf=1
     ELSE IF(metsol == 4) THEN
         wolfc2=0.1             ! accurate
         minf=3
@@ -9784,6 +9785,9 @@ SUBROUTINE xloopn                !
     ELSE IF(metsol == 6) THEN
         wolfc2=0.1             ! accurate
         minf=3
+    ELSE
+        wolfc2=0.5             ! not accurate
+        minf=1
     END IF
 
     !     check initial feasibility of constraint equations ----------------
@@ -9966,6 +9970,9 @@ SUBROUTINE xloopn                !
                 ELSE IF(metsol == 6) THEN
                     wolfc2=0.1            ! accurate
                     minf=4
+                ELSE
+                    wolfc2=0.5            ! not accurate
+                    minf=3
                 END IF
             ENDIF
 
