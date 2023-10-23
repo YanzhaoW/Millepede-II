@@ -1496,7 +1496,7 @@ SUBROUTINE addcst
             label=listConstraints(j)%label
             factr=listConstraints(j)%value
             itgbi=inone(label) ! -> ITGBI= index of parameter label
-            ivgb =globalParLabelIndex(2,itgbi) ! index of variable global parameter
+            ivgb =globalParLabelIndex(2,itgbi) ! -> index of variable global parameter
   
             IF(icalcm == 1.AND.nagb > nvgb.AND.ivgb > 0) THEN
                 CALL mupdat(nvgb+jcgb,ivgb,factr) ! add to matrix
@@ -1899,7 +1899,7 @@ SUBROUTINE prpcon
             DO
                 label=listConstraints(i)%label
                 itgbi=inone(label) ! -> ITGBI= index of parameter label
-                ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
+                ivgb =globalParLabelIndex(2,itgbi) ! -> index of variable global parameter
                 npar=npar+1
                 IF(ivgb > 0) THEN
                     nvar=nvar+1
@@ -2006,7 +2006,7 @@ SUBROUTINE prpcon
             END DO
         END IF 
         IF (icheck > 0) THEN
-            !ivgb=globalParLabelIndex(2,matConsGroups(2,icgrp)) ! -> variable-parameter index
+            !ivgb=globalParLabelIndex(2,matConsGroups(2,icgrp)) ! -> index of variable global parameter
             labelf=globalParLabelIndex(1,matConsGroups(2,icgrp))
             labell=globalParLabelIndex(1,matConsGroups(3,icgrp))
             WRITE(*,*) ' Cons. group ', icgrp, matConsGroups(1,icgrp), &
@@ -2044,10 +2044,10 @@ SUBROUTINE prpcon
     END DO
     matConsBlocks(1,ncblck+1)=ncgb+1
 
-    ! convert from total parameter index to variable parameter index
+    ! convert from total parameter index to index of variable global parameter
     DO i=1,ncblck
-        ifrst=globalParLabelIndex(2,matConsBlocks(2,i)) ! -> variable-parameter index
-        ilast=globalParLabelIndex(2,matConsBlocks(3,i)) ! -> variable-parameter index
+        ifrst=globalParLabelIndex(2,matConsBlocks(2,i)) ! -> index of variable global parameter
+        ilast=globalParLabelIndex(2,matConsBlocks(3,i)) ! -> index of variable global parameter
         IF (ifrst > 0) THEN
             matConsBlocks(2,i)=ifrst
             matConsBlocks(3,i)=ilast
@@ -2065,14 +2065,14 @@ SUBROUTINE prpcon
         END IF
     END DO
     DO icgrp=1,ncgrp
-        ifrst=globalParLabelIndex(2,matConsGroups(2,icgrp)) ! -> variable-parameter index
-        ilast=globalParLabelIndex(2,matConsGroups(3,icgrp)) ! -> variable-parameter index
+        ifrst=globalParLabelIndex(2,matConsGroups(2,icgrp)) ! -> index of variable global parameter
+        ilast=globalParLabelIndex(2,matConsGroups(3,icgrp)) ! -> index of variable global parameter
         IF (ifrst > 0) THEN
             matConsGroups(2,icgrp)=ifrst
             matConsGroups(3,icgrp)=ilast
             DO jcgb=matConsGroups(1,icgrp),matConsGroups(1,icgrp+1)-1
                 DO i=1,4
-                    ivgb=globalParLabelIndex(2,matConsRanges(i,jcgb)) ! -> variable-parameter index
+                    ivgb=globalParLabelIndex(2,matConsRanges(i,jcgb)) ! -> index of variable global parameter
                     matConsRanges(i,jcgb)=ivgb
                 END DO
             END DO
@@ -2208,7 +2208,7 @@ SUBROUTINE feasma
                 label=listConstraints(j)%label
                 factr=listConstraints(j)%value
                 itgbi=inone(label) ! -> ITGBI= index of parameter label
-                ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
+                ivgb =globalParLabelIndex(2,itgbi) ! -> index of variable global parameter
                 IF(ivgb > 0) matConstraintsT(INT(jcgb-ifirst,mpl)*INT(npar,mpl)+ivgb-ipar0+ioffc)= &
                     matConstraintsT(INT(jcgb-ifirst,mpl)*INT(npar,mpl)+ivgb-ipar0+ioffc)+factr ! matrix element
                 rhs=rhs-factr*globalParameter(itgbi)     ! reduce residuum
@@ -2415,7 +2415,7 @@ SUBROUTINE feasib(concut,iact)
                 label=listConstraints(j)%label
                 factr=listConstraints(j)%value
                 itgbi=inone(label) ! -> ITGBI= index of parameter label
-                ivgb =globalParLabelIndex(2,itgbi) ! -> variable-parameter index
+                ivgb =globalParLabelIndex(2,itgbi) ! -> index of variable global parameter
                 IF(ivgb > 0) THEN
                     vecCorrections(ivgb)=vecCorrections(ivgb)+vecConsSolution(jcgb)*factr
                 END IF
@@ -3579,7 +3579,7 @@ SUBROUTINE loopn
             END IF
             !      add to vector
             ivgbij=0
-            IF(itgbij /= 0) ivgbij=globalParLabelIndex(2,itgbij) ! index of variable global parameter
+            IF(itgbij /= 0) ivgbij=globalParLabelIndex(2,itgbij) ! -> index of variable global parameter
             IF(ivgbij > 0) THEN
                 globalVector(ivgbij)=globalVector(ivgbij) -weight*dsum*factrj ! vector
                 globalCounter(ivgbij)=globalCounter(ivgbij)+1
@@ -3591,7 +3591,7 @@ SUBROUTINE loopn
                     itgbik=inone(listMeasurements(k)%label) ! total parameter index
                     !          add to matrix
                     ivgbik=0
-                    IF(itgbik /= 0) ivgbik=globalParLabelIndex(2,itgbik) ! index of variable global parameter
+                    IF(itgbik /= 0) ivgbik=globalParLabelIndex(2,itgbik) ! -> index of variable global parameter
                     IF(ivgbij > 0.AND.ivgbik > 0) THEN    !
                         CALL mupdat(ivgbij,ivgbik,weight*factrj*factrk)
                     END IF
@@ -4390,7 +4390,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                 itgbi=readBufferDataI(jb+j)            ! global parameter label
                 rmeas=rmeas-REAL(readBufferDataD(jb+j),mpd)*globalParameter(itgbi) ! subtract   !!! reversed
                 IF (icalcm == 1) THEN
-                    ij=globalParLabelIndex(2,itgbi)         ! index of variable global parameter
+                    ij=globalParLabelIndex(2,itgbi)         ! -> index of variable global parameter
                     IF(ij > 0) THEN
                         ijn=backIndexUsage(ioffe+ij)        ! get index of index
                         IF(ijn == 0) THEN                   ! not yet included
@@ -4869,7 +4869,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             !         global-global matrix contribution: add directly to gg-matrix
     
             DO j=1,ist-jb
-                ivgbj=globalParLabelIndex(2,readBufferDataI(jb+j))     ! index of variable global parameter
+                ivgbj=globalParLabelIndex(2,readBufferDataI(jb+j))     ! -> index of variable global parameter
                 IF(ivgbj > 0) THEN
                     globalVector(ioffb+ivgbj)=globalVector(ioffb+ivgbj)  &
                         +dw1*wght*rmeas*REAL(readBufferDataD(jb+j),mpd) ! vector  !!! reverse
@@ -4895,7 +4895,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             !         global-local matrix contribution: accumulate rectangular matrix
             IF (icalcm /= 1) CYCLE
             DO j=1,ist-jb
-                ivgbj=globalParLabelIndex(2,readBufferDataI(jb+j))           ! variable-parameter index
+                ivgbj=globalParLabelIndex(2,readBufferDataI(jb+j))           ! -> index of variable global parameter
                 IF(ivgbj > 0) THEN
                     ije=backIndexUsage(ioffe+ivgbj)        ! get index of index, non-zero
                     DO k=1,jb-ja-1
@@ -6828,7 +6828,7 @@ SUBROUTINE loop1
         STOP '... no variable global parameters'
     ENDIF
 
-    DO ivgbi=1,nvgb         ! IVGBI     = variable parameter index
+    DO ivgbi=1,nvgb         ! IVGBI     = index of variable global parameter
         itgbi=globalParVarToTotal(ivgbi)     ! ITGBI = global parameter index
         presg=globalParPreSigma(itgbi)   ! get pre-sigma
         prewt=0.0              ! pre-weight
@@ -7668,12 +7668,12 @@ SUBROUTINE loop2
                 itgbij=inone(listMeasurements(j)%label) ! total parameter index
                 !         first index
                 ivgbij=0
-                IF(itgbij /= 0) ivgbij=globalParLabelIndex(2,itgbij) ! variable-parameter index
+                IF(itgbij /= 0) ivgbij=globalParLabelIndex(2,itgbij) ! -> index of variable global parameter
                 DO k=ia,j
                     itgbik=inone(listMeasurements(k)%label) ! total parameter index
                     !         second index
                     ivgbik=0
-                    IF(itgbik /= 0) ivgbik=globalParLabelIndex(2,itgbik) ! variable-parameter index
+                    IF(itgbik /= 0) ivgbik=globalParLabelIndex(2,itgbik) ! -> index of variable global parameter
                     IF(ivgbij > 0.AND.ivgbik > 0) THEN
                         CALL inbits(globalAllParToGroup(ivgbij),globalAllParToGroup(ivgbik),mreqpe)
                         IF (mprint > 1) WRITE(*,*) 'add index pair ',ivgbij,ivgbik
@@ -7702,7 +7702,7 @@ SUBROUTINE loop2
                 itgbij=inone(listMeasurements(j)%label) ! total parameter index
                 !         first index
                 ij=0
-                IF(itgbij /= 0) ij=globalParLabelIndex(2,itgbij) ! variable-parameter index
+                IF(itgbij /= 0) ij=globalParLabelIndex(2,itgbij) ! -> index of variable global parameter
                 IF (ij > 0) THEN
                     ij1=min(ij1,ij)
                     ijn=max(ijn,ij)
@@ -12247,6 +12247,7 @@ SUBROUTINE peend(icode, cmessage)
     CALL mvopen(9,'millepede.end')
     WRITE(9,101) icode, cmessage
 101 FORMAT(1X,I4,3X,A)
+    CLOSE(9)
     RETURN
 
 END SUBROUTINE peend
