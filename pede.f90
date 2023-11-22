@@ -415,6 +415,11 @@
 !! In this case reading with multiple threads
 !! (each file by single thread) can speed up the decompression.
 !!
+!! \section ch-weightedfiles Weighted binary files
+!! A constant weight can be applied to all records in a binary file:
+!!
+!!         <file name> -- <weight> ! <comment>
+!!
 !! \section ch-transf Transformation from FORTRAN77 to Fortran90
 !! The **Millepede** source code has been formally transformed from <i>fixed form</i>
 !! FORTRAN77 to <i>free form</i> Fortran90 (using TO_F90 by Alan Miller)
