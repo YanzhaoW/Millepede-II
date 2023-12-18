@@ -50,9 +50,13 @@ SUPPORT_LAPACK64 =
 LAPACK64 = OPENBLAS
 LAPACK64_LIBS_DIR = /usr/lib64
 LAPACK64_LIB = openblasp64
+#MKLROOT= <path to mkl>
 #LAPACK64 = MKL
-#LAPACK64_LIBS_DIR = <path to mkl_rt>
+#LAPACK64_LIBS_DIR = $(MKLROOT)/lib/intel64
 #LAPACK64_LIB = mkl_rt
+# Intel oneMKL PARDISO
+SUPPORT_PARDISO = 
+#yes
 #
 # If yes use multithreading with OpenMP (TM)
 SUPPORT_OPENMP = yes
@@ -70,7 +74,8 @@ F_FLAGS = -Wall -fautomatic -fno-backslash -O3 -cpp
 #
 CCOMP = $(OMPP) $(GCC) 
 C_FLAGS = -Wall -Wno-unused-function -O3 -Df2cFortran
-C_INCLUDEDIRS =  # e.g. -I
+F_INCLUDEDIRS = # e.g. -I
+C_INCLUDEDIRS = # e.g. -I
 #.
 ifeq ($(findstring 4.4., $(GCCVERS)), 4.4.)
 # gcc44: 
@@ -102,6 +107,12 @@ ifeq ($(SUPPORT_LAPACK64),yes)
     endif
     $(info - Set MKL_THREADING_LAYER=GNU)
     $(info )
+     ifeq ($(SUPPORT_PARDISO),yes)
+      $(info - Using Intel oneMKL PARDISO)
+      $(info )
+      F_FLAGS += -DPARDISO
+      F_INCLUDEDIRS += -I $(MKLROOT)/include
+    endif
   endif
   ifeq ($(LAPACK64),OPENBLAS)
     $(info Using OPENBLAS for LAPACK64)
@@ -167,7 +178,7 @@ install: $(EXECUTABLES) #clean
 # Make the object files - depend on source and include file 
 #
 %.o : %.f90 Makefile
-	${FCOMP} ${F_FLAGS} -c $< -o $@ 
+	${FCOMP} ${F_FLAGS} $(F_INCLUDEDIRS) -c $< -o $@
 %.o: %.c Makefile
 	$(CCOMP) -c $(C_FLAGS) $(DEFINES) $(C_INCLUDEDIRS) $(DEBUG) -o $@ $<
 #

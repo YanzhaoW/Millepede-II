@@ -36,13 +36,13 @@ MODULE mpdalc
     INTERFACE mpalloc
         MODULE PROCEDURE mpallocdvec, mpallocfvec, mpallocivec, mpalloclvec, &
             mpallocfarr, mpallociarr, mpalloclarr, mpalloclist, mpalloclistc, &
-            mpalloccvec
+            mpalloclisti, mpalloccvec
     END INTERFACE mpalloc
     !> deallocate array
     INTERFACE mpdealloc
         MODULE PROCEDURE mpdeallocdvec, mpdeallocfvec, mpdeallocivec, mpdealloclvec, &
             mpdeallocfarr, mpdeallociarr, mpdealloclarr, mpdealloclist, mpdealloclistc, &
-            mpdealloccvec
+            mpdealloclisti, mpdealloccvec
     END INTERFACE mpdealloc
 
 CONTAINS
@@ -148,6 +148,17 @@ CONTAINS
         ALLOCATE (array(length),stat=ifail)
         CALL mpalloccheck(ifail,((mpi+itemCLen)*length)/mpi,text)
     END SUBROUTINE mpalloclistc
+
+    !> allocate (1D) character list item array
+    SUBROUTINE mpalloclisti(array,length,text)
+        TYPE(listItemI), DIMENSION(:), INTENT(IN OUT), ALLOCATABLE :: array
+        INTEGER(mpl), INTENT(IN) :: length
+        CHARACTER (LEN=*), INTENT(IN) :: text
+
+        INTEGER(mpi) :: ifail
+        ALLOCATE (array(length),stat=ifail)
+        CALL mpalloccheck(ifail,((mpi+mpi)*length)/mpi,text)
+    END SUBROUTINE mpalloclisti
 
     !> allocate (1D) character array
     SUBROUTINE mpalloccvec(array,length,text)
@@ -280,6 +291,17 @@ CONTAINS
         DEALLOCATE (array,stat=ifail)
         CALL mpdealloccheck(ifail,isize)
     END SUBROUTINE mpdealloclistc
+
+    !> deallocate (1D) integer list item array
+    SUBROUTINE mpdealloclisti(array)
+        TYPE(listItemI), DIMENSION(:), INTENT(IN OUT), ALLOCATABLE :: array
+
+        INTEGER(mpi) :: ifail
+        INTEGER(mpl) :: isize
+        isize = ((mpi+mpi)*size(array,kind=mpl))/mpi
+        DEALLOCATE (array,stat=ifail)
+        CALL mpdealloccheck(ifail,isize)
+    END SUBROUTINE mpdealloclisti
 
     !> deallocate (1D) character array
     SUBROUTINE mpdealloccvec(array)

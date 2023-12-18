@@ -31,8 +31,9 @@ MODULE mpmod
     SAVE
     ! steering parameters
     INTEGER(mpi) :: ictest=0  !< test mode '-t'
-    INTEGER(mpi) :: metsol=0  !< solution method (1: inversion, 2: diagonalization, 3: decomposition, 4: MINRES, 5: \ref minresqlpmodule::minresqlp "MINRES-QLP", 7: LAPACK)
-    INTEGER(mpi) :: matsto=2  !< (global) matrix storage mode (0: unpacked, 1: full = packed, 2: sparse)
+    INTEGER(mpi) :: metsol=0  !< solution method (1: inversion, 2: diagonalization, 3: decomposition, 4: MINRES, 5: \ref minresqlpmodule::minresqlp "MINRES-QLP", 7/8: LAPACK, 9: (Intel oneMKL) PARDISO)
+    INTEGER(mpi) :: matsto=2  !< (global) matrix storage mode (0: unpacked, 1: full = packed, 2: sparse(custom), 3: sparse(CSR3, BSR3))
+    INTEGER(mpi) :: matbsz=1  !< (global) matrix (fixed) block size, only used for BSR3 storage mode (Intel oneMKL PARDISO)
     INTEGER(mpi) :: mprint=1  !< print flag (0: minimal, 1: normal, >1: more)
     INTEGER(mpi) :: mdebug=0  !< debug flag (number of records to print)
     INTEGER(mpi) :: mdebg2=10 !< number of measurements for record debug printout
@@ -116,6 +117,9 @@ MODULE mpmod
     INTEGER(mpi) :: monpg2=0 !< progress monitoring, repetition rate max increase
 #ifdef LAPACK64
     INTEGER(mpi) :: ilperr=0 !< flag to calculate parameter errors with LAPACK
+#ifdef PARDISO
+    INTEGER(mpi) :: ipddbg=0 !< flag for debugging Intel oneMKL PARDISO
+#endif
 #endif
 
     ! variables
@@ -172,7 +176,9 @@ MODULE mpmod
     REAL(mpd) :: flines !< function value line search
     REAL(mpd) :: sumndf !< weighted sum(ndf)
     INTEGER(mpi) :: nrderr=0 !< number of binary files with read errors
-       
+    INTEGER(mpi) :: mpdbsz=0 !< PARDISO, number of block sizes to be tried (by PBSBITS)
+    INTEGER(mpi), DIMENSION(10) :: ipdbsz !< PARDISO, list of block sizes to be tried (by PBSBITS)
+
     ! each loop
     INTEGER(mpi) :: numReadbuffer     !< number of buffers (records) in (read) block
     INTEGER(mpi) :: numBlocks         !< number of (read) blocks
@@ -264,9 +270,12 @@ MODULE mpmod
     INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: globalTotIndexGroups   !< 1. (total) index, size per group
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: globalAllIndexGroups   !< 1. (all variable) index per group
 
-    ! row information for sparse matrix
-    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: sparseMatrixColumns     !< (compressed) list of columns for sparse matrix
+    ! row, column information for custom sparse matrix (MINRES)
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: sparseMatrixColumns   !< (compressed) list of columns for sparse matrix
     INTEGER(mpl), DIMENSION(:,:), ALLOCATABLE :: sparseMatrixOffsets !< row offsets for column list, sparse matrix elements
+    ! row, column information for CSR3 sparse matrix (PARDISO)
+    INTEGER(mpl), DIMENSION(:), ALLOCATABLE :: csr3RowOffsets !< row offsets for column list
+    INTEGER(mpl), DIMENSION(:), ALLOCATABLE :: csr3ColumnList !< list of columns for sparse matrix
     ! read buffer
     INTEGER(mpi), DIMENSION(:,:), ALLOCATABLE :: readBufferInfo !< buffer management (per thread)
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: readBufferPointer !< pointer to used buffers
@@ -324,6 +333,13 @@ MODULE mpmod
     TYPE(listItem), DIMENSION(:), ALLOCATABLE :: listMeasurements !< list of (external) measurements from steering file
     INTEGER(mpi) :: lenComments=0  !< length of list of (global parameter) comments from steering file
     TYPE(listItemC), DIMENSION(:), ALLOCATABLE :: listComments  !< list of comments from steering file
+#ifdef LAPACK64
+#ifdef PARDISO
+    INTEGER(mpi) :: lenPARDISO=0  !< length of list of Intel oneMKL PARDISO parameters (indices 1..64)
+    TYPE(listItemI), DIMENSION(:), ALLOCATABLE :: listPARDISO !< list of Intel oneMKL PARDISO parameters
+    INTEGER(mpl) :: ipdmem=0 !< memory (kB) used by Intel oneMKL PARDISO
+#endif
+#endif
     !======================================================
     ! file information
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: mfd   !< file mode: cbinary =1, text =2, fbinary=3

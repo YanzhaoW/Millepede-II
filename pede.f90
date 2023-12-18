@@ -53,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-13-06 \
+!!         git clone --depth 1 --branch V04-14-00 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -175,6 +175,8 @@
 !! * 230617: Fix problem with monitoring of residuals. Calculate *skyline* fraction for sparse matrices.
 !! * 230822: Fix problem for block diagonal global matrix (keeping single block).
 !! * 231020: Define proper \ref par-linesearch "line search" parameters for LAPACK too.
+!! * 231218: New optional method \ref ch-pardiso "sparsePARDISO"
+!!   using the Intel oneMKL PARDISO solver for sparse matrices.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -356,6 +358,34 @@
 !! With the option \ref cmd-lapackerr "LAPACKwitherrors" the inverse matrix is calculated from the
 !! factorization to provide parameter errors (DPPTRI/DPOTRI, DSPTRI/DSYTRI, potentially slow, single-threaded).
 !!
+!! \subsection ch-pardiso PARDISO
+!! This optional method is using the [Intel oneMKL PARDISO](
+!! https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-fortran/2023-2/onemkl-pardiso-parallel-direct-sparse-solver-iface.html)
+!! shared-memory multiprocessing parallel direct sparse solver. This aims at use cases with really sparse global
+!! matrices (e.g. less than 10% nonzero elements).
+!!
+!! The upper triangle of the (symmetric) global matrix is stored in the 3-array variation of the compressed sparse row format (CSR3).
+!! It can be checked for a (fixed size) \b block structure to reduce the storage size (BSR3).
+!! (This could be further improved by reordering - not implemeted.)
+!!
+!! For problems with linear equality constraints the usage of Lagrange multipliers is enforced.
+!!
+!! For the internal steering parameters \c IPARM(64) the default values are used.
+!! They can be modified with the \ref cmd-pardiso "pardiso" keyword
+!! (specifying pairs of indices (1-64) and values):
+!!
+!!          pardiso
+!!          ...      ...
+!!          index    value
+!!          ...      ...
+!!
+!! Related options:
+!!   - \ref cmd-blocksize-pd "blocksizePARDISO", e.g. combinations of factors 2 and 3:
+!!
+!!           blocksizePARDISO 2 3 4 6 9 12
+!!
+!!   - \ref cmd-debug-pd "debugPARDISO".
+!!
 !! \section ch-regul Regularization
 !! Optionally a term \f$\tau\cdot\Vert\Vek{x}\Vert\f$ can be added to the objective function
 !! (to be minimized) where \f$\Vek{x}\f$ is the vector of global parameters
@@ -530,7 +560,7 @@
 !!         keyword   number1  number2  ...
 !!
 !! For those specifying \ref sssec-parinf "properties" of the global parameters
-!! (\a keyword = \c parameter, \c constraint or \c measurement)
+!! (\a keyword = \c parameter, \c constraint or \c measurement (or \c comment))
 !! for each involved global parameter (identified by a \ref an-glolab "label")
 !! one additional line follows:
 !!
@@ -544,6 +574,11 @@
 !! Set band width \ref mpmod::mbandw "mbandw" for
 !! \ref minresmodule::minres "MINRES" preconditioner to \a number1 [0]
 !! and additional flag \ref mpmod::lprecm "lprecm" to \a number2 [0].
+!! \subsection cmd-blocksize-pd blocksizePARDISO
+!! Enable for \ref ch-pardiso "PARDISO" storage in BSR3 format
+!! (three-array variation of the block compressed sparse row format).
+!! Provide (one to ten, increasingly ordered) candidate block sizes. The block size with the smallest
+!! memory footprint (of the global matrix in BSR3 format) is selected.
 !! \subsection cmd-cache cache
 !! Set (read+write) cache size \ref mpmod::ncache "ncache" to \a number1.
 !! Define cache size and average fill level.
@@ -575,6 +610,9 @@
 !! \subsection cmd-debug debug
 !! Set number of records with debug printout \ref mpmod::mdebug "mdebug" to
 !! \a number1 [3], number of measurements with printout \ref mpmod::mdebg2 "mdebg2" to \a number2.
+!! \subsection cmd-debug-pd debugPARDISO
+!! Set \ref ch-pardiso "PARDISO" message level \ref mpmod::ipddbg "ipddbg" to
+!! \a number1 [0]. Dump steering array \c IPARM(64) for value > 0.
 !! \subsection cmd-dwfractioncut dwfractioncut
 !! Set \ref an-dwcut "down-weighting fraction" cut \ref mpmod::dwcut "dwcut"
 !! to \a number1 (max. 0.5).
@@ -640,6 +678,7 @@
 !! \c fullMINRES : (4,1) or \c sparseMINRES : (4,2),
 !! \c fullMINRES-QLP : (5,1) or \c sparseMINRES-QLP : (5,2),
 !! \c fullLAPACK factorization : (7,1), \c unpackedLAPACK factorization : (8,0)),
+!! \c sparsePARDISO factorization : (9,3)
 !! (minimum) number of iterations \ref mpmod::mitera "mitera" to \a number1,
 !! convergence limit \ref mpmod::dflim "dflim" to \a number2.
 !!
@@ -683,6 +722,8 @@
 !! to \a number3.
 !! \subsection cmd-parameter parameter
 !! Define \ref sssec-parinf "initial value, pre-sigma" for global parameters.
+!! \subsection cmd-pardiso pardiso
+!! Modify for \ref ch-pardiso "PARDISO" the internal steering parameters.
 !! \subsection cmd-presigma presigma
 !! Set default pre-sigma \ref mpmod::regpre "regpre" to \a number1 [1].
 !! \subsection cmd-print print
@@ -781,6 +822,7 @@
 !!    + **33**   Aborted, stack overflow in quicksort
 !!    + **34**   Aborted, pattern string too long - obsolete
 !!    + **35**   Aborted, mismatch of number of global parameters
+!!    + **40**   Aborted, other errors
 
 !> \page troubleshooting_page Troubleshooting
 !!
@@ -880,7 +922,7 @@ PROGRAM mptwo
     !$    INTEGER(mpi) :: NPROC
 
     REAL etime
-    
+
     SAVE
     !     ...
     rstp=etime(ta)
@@ -902,7 +944,10 @@ PROGRAM mptwo
     CALL ilaver( major,minor, patch )
     WRITE(*,110) LAPACK64, major,minor, patch
 110 FORMAT(' using LAPACK64 with ',(a),', version ',i0,'.',i0,'.',i0)
-#endif    
+#ifdef PARDISO
+    WRITE(*,*) 'using Intel oneMKL PARDISO'
+#endif
+#endif
 #ifdef __GFORTRAN__
     WRITE(*,111)  __GNUC__ , __GNUC_MINOR__ , __GNUC_PATCHLEVEL__
 111 FORMAT(' compiled with gcc ',i0,'.',i0,'.',i0)
@@ -963,7 +1008,7 @@ PROGRAM mptwo
     ELSE
         WRITE(*,*) 'Number of threads for LAPACK: ', c6
     END IF  
-#endif       
+#endif
     IF (ncache < 0) THEN
         ncache=25000000*mthrd  ! default cache size (100 MB per thread)
     ENDIF
@@ -1237,7 +1282,7 @@ PROGRAM mptwo
         WRITE(8,*) 'In total 3 +',nloopn,' loops through the data files'
     ELSE
         WRITE(8,*) 'In total 2 +',nloopn,' loops through the data files'
-    ENDIF   
+    ENDIF
     IF (mnrsit > 0) THEN
         WRITE(8,*) ' '
         WRITE(8,*) 'In total    ',mnrsit,' internal MINRES iterations'
@@ -1276,6 +1321,12 @@ PROGRAM mptwo
     WRITE(*,*) ' '
     gbu=1.0E-9*REAL(maxwordsalloc*(BIT_SIZE(1_mpi)/8),mps)             ! GB used
     WRITE(*,105) gbu
+#ifdef LAPACK64
+#ifdef PARDISO
+    IF(ipdmem > 0) WRITE(*,106) REAL(ipdmem,mps)*1.E-6
+106 FORMAT('      PARDISO dyn. memory allocation: ',f11.6,' GB')
+#endif
+#endif
     WRITE(*,*) ' '
 
 102 FORMAT(2X,i4,i10,2X,3F10.5)
@@ -1771,7 +1822,7 @@ SUBROUTINE grpcon
     IF (icheck>0) THEN
         PRINT *
         PRINT *, ' cons.group  first con.  first par.   last par.       #cons        #par'
-    ENDIF    
+    ENDIF
     DO icgrp=1,ncgrp
         npar=0
         DO i=matConsGroups(2,icgrp),matConsGroups(3,icgrp)
@@ -1815,7 +1866,7 @@ SUBROUTINE grpcon
         WRITE(*,*) 'GRPCON:',ncgbr,' redundancy constraints in ', ncgrpr, ' groups resolved'
         ! all constraint groups resolved ?
         IF (ncgrpr == ncgrp) ncgrp=0
-    ENDIF 
+    ENDIF
     IF (ncgrpd > 0) THEN
         WRITE(*,*) 'GRPCON:',ncgbd,' redundancy constraints in ', ncgrpd, ' groups detected'
     ENDIF
@@ -1910,7 +1961,7 @@ SUBROUTINE prpcon
                     nvar=nvar+1
                     matConsRanges(1,icgb)=min(matConsRanges(1,icgb),itgbi)
                     matConsRanges(2,icgb)=max(matConsRanges(2,icgb),itgbi)
-                ENDIF    
+                ENDIF
                 i=i+1
                 IF(i > lenConstraints) EXIT
                 IF(listConstraints(i)%label < 0) EXIT
@@ -2848,7 +2899,7 @@ SUBROUTINE peprep(mode)
         ichunk=256
 #else    
         ichunk=MIN((numReadBuffer+mthrd-1)/mthrd/32+1,256)
-#endif        
+#endif
         ! parallelize record loop
         !$OMP  PARALLEL DO &
         !$OMP   DEFAULT(PRIVATE) &
@@ -3021,7 +3072,7 @@ SUBROUTINE pepgrp
     ichunk=256
 #else    
     ichunk=MIN((numReadBuffer+mthrd-1)/mthrd/32+1,256)
-#endif          
+#endif
     ! parallelize record loop
     !$OMP  PARALLEL DO &
     !$OMP   DEFAULT(PRIVATE) &
@@ -3095,7 +3146,7 @@ SUBROUTINE pepgrp
                 itgbi=readBufferDataI(j)
                 globalParLabelIndex(4,itgbi)=globalParLabelIndex(4,itgbi)+1
             END DO                                
-        ENDIF    
+        ENDIF
     END DO
     ! free back index
     IF (mcount > 0) THEN
@@ -3957,15 +4008,33 @@ SUBROUTINE mupdat(i,j,add)       !
     REAL(mpd), INTENT(IN)             :: add
 
     INTEGER(mpl):: ijadd
+    INTEGER(mpl):: ijcsr3
     INTEGER(mpl):: ia
     INTEGER(mpl):: ja
     INTEGER(mpl):: ij
     !     ...
-    IF(i <= 0.OR.j <= 0) RETURN
+    IF(i <= 0.OR.j <= 0.OR. add == 0.0_mpd) RETURN
     ia=MAX(i,j)          ! larger
     ja=MIN(i,j)          ! smaller
     ij=0
-    IF(matsto == 2) THEN             ! sparse symmetric matrix
+    IF(matsto == 3) THEN
+        IF(matbsz < 2) THEN               ! sparse symmetric matrix (CSR3)
+            ij=ijcsr3(i,j)                ! inline code requires same time
+            IF (ij > 0) globalMatD(ij)=globalMatD(ij)+add
+            RETURN
+        ELSE                              ! sparse symmetric matrix (BSR3)
+            ! block index
+            ij=ijcsr3((i-1)/matbsz+1,(j-1)/matbsz+1)
+            IF (ij > 0) THEN
+                ! index of first element in block
+                ij=(ij-1)*matbsz*matbsz+1
+                ! adjust index for position in block
+                ij=ij+mod(INT(ia-1,mpi),matbsz)*matbsz+mod(INT(ja-1,mpi),matbsz)
+                globalMatD(ij)=globalMatD(ij)+add
+            ENDIF
+            RETURN
+        END IF
+    ELSE IF(matsto == 2) THEN             ! sparse symmetric matrix (custom)
         ij=ijadd(i,j)                     ! inline code requires same time
         IF (ij == 0) RETURN               ! pair is suppressed
         IF (ij > 0) THEN
@@ -4028,29 +4097,97 @@ SUBROUTINE mgupdt(i,j1,j2,il,jl,n,sub)
     REAL(mpd), INTENT(IN)             :: sub((n*n+n)/2)
 
     INTEGER(mpl):: ij
+    INTEGER(mpl):: ioff
     INTEGER(mpi):: ia
+    INTEGER(mpi):: ia1
     INTEGER(mpi):: ib
+    INTEGER(mpi):: iblast
+    INTEGER(mpi):: iblock
+    INTEGER(mpi):: ijl
     INTEGER(mpi):: iprc
     INTEGER(mpi):: ir
     INTEGER(mpi):: ja
     INTEGER(mpi):: jb
-    INTEGER(mpi):: ijl
+    INTEGER(mpi):: jblast
+    INTEGER(mpi):: jblock
+    INTEGER(mpi):: jc
+    INTEGER(mpi):: jc1
+    INTEGER(mpi):: jpg
     INTEGER(mpi):: k
     INTEGER(mpi):: lr
     INTEGER(mpi):: nc
+
+    INTEGER(mpl) ijcsr3
     !     ...
     IF(i <= 0.OR.j1 <= 0.OR.j2 > i) RETURN
+
+    IF(matsto == 3) THEN            ! sparse symmetric matrix (CSR3, upper triangle)
+        ja=globalAllIndexGroups(i)     ! first (global) column
+        jb=globalAllIndexGroups(i+1)-1 ! last (global) column
+        ia1=globalAllIndexGroups(j1)   ! first (global) row
+        ! loop over groups (now in same column)
+        DO jpg=j1,j2
+            ia=globalAllIndexGroups(jpg)      ! first (global) row in group
+            ib=globalAllIndexGroups(jpg+1)-1  ! last (global) row in group
+            IF (matbsz < 2) THEN
+                ! CSR3
+                ij=ijcsr3(ia,ja)
+                IF (ij == 0) THEN
+                    PRINT *, ' MGUPDT: ij=0', i,j1,j2,il,jl,ij,lr,iprc, matsto
+                    STOP
+                END IF
+                ioff=ij-ja                        ! offset
+                DO ir=ia,ib
+                    jc1=max(ir,ja)
+                    k=il+jc1-ja
+                    ijl=(k*k-k)/2+jl+ir-ia1       ! ISYM index offset (subtrahends matrix)
+                    DO jc=jc1,jb
+                        globalMatD(ioff+jc)=globalMatD(ioff+jc)-sub(ijl)
+                        ijl=ijl+k
+                        k=k+1
+                    END DO
+                    ioff=ioff+csr3RowOffsets(ir+1)-csr3RowOffsets(ir)-1
+                END DO
+            ELSE
+                ! BSR3
+                iblast=-1
+                jblast=-1
+                ioff=0
+                DO ir=ia,ib
+                    iblock=(ir-1)/matbsz+1
+                    jc1=max(ir,ja)
+                    k=il+jc1-ja
+                    ijl=(k*k-k)/2+jl+ir-ia1       ! ISYM index offset (subtrahends matrix)
+                    DO jc=jc1,jb
+                        jblock=(jc-1)/matbsz+1
+                        ! index of first element in (new) block
+                        IF (jblock /= jblast.OR.iblock /= iblast) THEN
+                            ioff=(ijcsr3(iblock,jblock)-1)*matbsz*matbsz+1
+                            iblast=iblock
+                            jblast=jblock
+                        END IF
+                        ! adjust index for position in block
+                        ij=ioff+mod(INT(ir-1,mpi),matbsz)+mod(INT(jc-1,mpi),matbsz)*matbsz
+                        globalMatD(ij)=globalMatD(ij)-sub(ijl)
+                        ijl=ijl+k
+                        k=k+1
+                    END DO
+                END DO
+            END IF
+        END DO
+        RETURN
+    END IF
+
+    ! lower triangle
     ia=globalAllIndexGroups(i)      ! first (global) row
     ib=globalAllIndexGroups(i+1)-1  ! last (global) row
     ja=globalAllIndexGroups(j1)     ! first (global) column
     jb=globalAllIndexGroups(j2+1)-1 ! last (global) column
-        
-    ij=0 
-    IF(matsto == 2) THEN           ! sparse symmetric matrix
+
+    IF(matsto == 2) THEN       ! sparse symmetric matrix (custom)
         CALL ijpgrp(i,j1,ij,lr,iprc)         ! index of first element of group 'j1' 
-        !print *, ' mgupdt ', i,j1,j2,il,jl,ij,lr,iprc
         IF (ij == 0) THEN
-            PRINT *, ' MGUPDT: ij=0', i,j1,j2,il,jl,ij,lr,iprc
+            PRINT *, ' MGUPDT: ij=0', i,j1,j2,il,jl,ij,lr,iprc,matsto
             STOP 
         END IF
         k=il
@@ -4613,7 +4750,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                 ELSE
                     CALL sqmibb2(clmat,blvec,nalc,mbdr,mbnd,inv,nrank,  &
                         vbnd,vbdr,aux,vbk,vzru,scdiag,scflag)
-                ENDIF        
+                ENDIF
             ELSE
                 !      full inversion and solution
                 inv=2
@@ -6148,7 +6285,7 @@ FUNCTION ijprec(itema,itemb)
 
 END FUNCTION ijprec
 
-!> Index for sparse storage.
+!> Index for sparse storage (custom).
 !!
 !! In case of (compressed) sparse storage calculate index for off-diagonal matrix element.
 !!
@@ -6197,6 +6334,66 @@ FUNCTION ijadd(itema,itemb)      ! index using "d" and "z"
 
 END FUNCTION ijadd
 
+!> Index for sparse storage (CSR3).
+!!
+!! In case of sparse storage calculate index for off-diagonal matrix element.
+!!
+!! \param  [in]  itema  row number
+!! \param  [in]  itemb  column number
+!! \return index ( <=0: not existing)
+
+FUNCTION ijcsr3(itema,itemb)      ! index using "d" and "z"
+    USE mpmod
+
+    IMPLICIT NONE
+
+    INTEGER(mpi) :: item1
+    INTEGER(mpi) :: item2
+    INTEGER(mpi) :: jtem
+
+    INTEGER(mpi), INTENT(IN) :: itema
+    INTEGER(mpi), INTENT(IN) :: itemb
+
+    INTEGER(mpl) :: ijcsr3
+    INTEGER(mpl) :: kk
+    INTEGER(mpl) :: ks
+    INTEGER(mpl) :: ke
+
+    !     ...
+    ijcsr3=0
+    item1=MAX(itema,itemb)          ! larger index
+    item2=MIN(itema,itemb)          ! smaller index
+    !print *, ' ijadd ', item1, item2
+    IF(item2 <= 0.OR.item1 > nagb) RETURN
+    ! start of column list for row
+    ks=csr3RowOffsets(item2)
+    ! end of column list for row
+    ke=csr3RowOffsets(item2+1)-1
+    ! binary search
+    IF(ke < ks) THEN
+        ! empty list
+        PRINT *, ' IJCSR3 empty list ', item1, item2, ks, ke
+        CALL peend(23,'Aborted, bad matrix index')
+        STOP 'ijcsr3: empty list'
+    ENDIF
+    DO
+        kk=(ks+ke)/2 ! center of rgion
+        jtem=INT(csr3ColumnList(kk),mpi)
+        IF(item1 == jtem) EXIT ! found
+        IF(item1 < jtem) THEN
+            ke=kk-1
+        ELSE
+            ks=kk+1
+        END IF
+        IF(ks <= ke) CYCLE
+        ! not found
+        PRINT *, ' IJCSR3 not found ', item1, item2, ks, ke
+        CALL peend(23,'Aborted, bad matrix index')
+        STOP 'ijcsr3: not found'
+    END DO
+    ijcsr3=kk
+END FUNCTION ijcsr3
+
 !> Get matrix element at (i,j).
 !!
 !! \param  [in]  itema  row number
@@ -6214,7 +6411,8 @@ FUNCTION matij(itema,itemb)
     INTEGER(mpl) :: j
     INTEGER(mpl) :: ij
     INTEGER(mpl) :: ijadd
- 
+    INTEGER(mpl) :: ijcsr3
+
     INTEGER(mpi), INTENT(IN) :: itema
     INTEGER(mpi), INTENT(IN) :: itemb
 
@@ -6228,15 +6426,30 @@ FUNCTION matij(itema,itemb)
     i=item1
     j=item2
     
-    IF(matsto /= 2) THEN                      ! full or unpacked (block diagonal) symmetric matrix
+    IF(matsto < 2) THEN                       ! full or unpacked (block diagonal) symmetric matrix
         ij=globalRowOffsets(i)+j
         matij=globalMatD(ij)
-    ELSE                                      ! sparse symmetric matrix
-        ij=ijadd(item1,item2)                         ! inline code requires same time
-        IF (ij > 0) THEN
+    ELSE IF(matsto ==2) THEN                  ! sparse symmetric matrix (custom)
+        ij=ijadd(item1,item2)                 ! inline code requires same time
+        IF(ij > 0) THEN
             matij=globalMatD(ij)
         ELSE IF (ij < 0) THEN
             matij=REAL(globalMatF(-ij),mpd)
+        END IF
+    ELSE                                      ! sparse symmetric matrix (CSR3)
+        IF(matbsz < 2) THEN                   ! sparse symmetric matrix (CSR3)
+            ij=ijcsr3(item1,item2)            ! inline code requires same time
+            IF(ij > 0) matij=globalMatD(ij)
+        ELSE                                  ! sparse symmetric matrix (BSR3)
+            ! block index
+            ij=ijcsr3((item1-1)/matbsz+1,(item2-1)/matbsz+1)
+            IF (ij > 0) THEN
+                ! index of first element in block
+                ij=(ij-1)*matbsz*matbsz+1
+                ! adjust index for position in block
+                ij=ij+mod(item1-1,matbsz)*matbsz+mod(item2-1,matbsz)
+                matij=globalMatD(ij)
+            ENDIF
         END IF
     END IF
 
@@ -6875,7 +7088,7 @@ SUBROUTINE loop1
             WRITE(*,101) 'MREQENF',mreqenf,'required number of entries (eqns in binary files)'
         ELSE
             WRITE(*,101) 'MREQENF',mreqenf,'required number of entries (recs in binary files)'
-        ENDIF     
+        ENDIF
         IF(iteren > mreqenf) &
             WRITE(*,101) 'ITEREN',iteren,'iterate cut for parameters with less entries'
         WRITE(*,101) 'MREQENA',mreqena,'required number of entries (from accepted fits)'            
@@ -6908,7 +7121,7 @@ SUBROUTINE loop1
         WRITE(8,101) 'MREQENF',mreqenf,'required number of entries (eqns in binary files)'
     ELSE
         WRITE(8,101) 'MREQENF',mreqenf,'required number of entries (recs in binary files)'
-    ENDIF    
+    ENDIF
     IF(iteren > mreqenf) &
         WRITE(8,101) 'ITEREN',iteren,'iterate cut for parameters with less entries'
     WRITE(8,101) 'MREQENA',mreqena,'required number of entries (from accepted fits)'
@@ -7098,6 +7311,7 @@ SUBROUTINE loop2
     INTEGER(mpi) :: naeqna
     INTEGER(mpi) :: naeqnf
     INTEGER(mpi) :: naeqng
+    INTEGER(mpi) :: npdblk
     INTEGER(mpi) :: nc31
     INTEGER(mpi) :: ncachd
     INTEGER(mpi) :: ncachi
@@ -7129,12 +7343,16 @@ SUBROUTINE loop2
 
     REAL(mpd)::dstat(3)
     REAL(mpd)::rerr
+    INTEGER(mpl):: nblock
+    INTEGER(mpl):: nbwrds
     INTEGER(mpl):: noff8
     INTEGER(mpl):: ndimbi
     INTEGER(mpl):: ndimsa(4)
     INTEGER(mpl):: ndgn
+    INTEGER(mpl):: nnzero
     INTEGER(mpl):: matsiz(2)
     INTEGER(mpl):: matwords
+    INTEGER(mpl):: mbwrds
     INTEGER(mpl):: length
     INTEGER(mpl):: rows
     INTEGER(mpl):: cols
@@ -7146,6 +7364,7 @@ SUBROUTINE loop2
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsGroupList
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecConsGroupIndex
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecPairedParGroups
+    INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: vecBlockCounts
 
     INTERFACE ! needed for assumed-shape dummy arguments
         SUBROUTINE ndbits(npgrp,ndims,nsparr,ihst)
@@ -7178,6 +7397,32 @@ SUBROUTINE loop2
             INTEGER(mpi), INTENT(OUT) :: npair
             INTEGER(mpi), DIMENSION(:), INTENT(OUT) :: npgrp
         END SUBROUTINE ggbmap
+        SUBROUTINE pbsbits(npgrp,ibsize,nnzero,nblock,nbkrow)
+            USE mpdef
+            INTEGER(mpi), DIMENSION(:), INTENT(IN) :: npgrp
+            INTEGER(mpi), INTENT(IN) :: ibsize
+            INTEGER(mpl), INTENT(OUT) :: nnzero
+            INTEGER(mpl), INTENT(OUT) :: nblock
+            INTEGER(mpi), DIMENSION(:),INTENT(OUT) :: nbkrow
+        END SUBROUTINE pbsbits
+        SUBROUTINE pblbits(npgrp,ibsize,nsparr,nsparc)
+            USE mpdef
+            INTEGER(mpi), DIMENSION(:), INTENT(IN) :: npgrp
+            INTEGER(mpi), INTENT(IN) :: ibsize
+            INTEGER(mpl), DIMENSION(:), INTENT(IN) :: nsparr
+            INTEGER(mpl), DIMENSION(:), INTENT(OUT) :: nsparc
+        END SUBROUTINE pblbits
+        SUBROUTINE prbits(npgrp,nsparr)
+            USE mpdef
+            INTEGER(mpi), DIMENSION(:), INTENT(IN) :: npgrp
+            INTEGER(mpl), DIMENSION(:), INTENT(OUT) :: nsparr
+        END SUBROUTINE prbits
+        SUBROUTINE pcbits(npgrp,nsparr,nsparc)
+            USE mpdef
+            INTEGER(mpi), DIMENSION(:), INTENT(IN) :: npgrp
+            INTEGER(mpl), DIMENSION(:), INTENT(IN) :: nsparr
+            INTEGER(mpl), DIMENSION(:), INTENT(OUT) :: nsparc
+        END SUBROUTINE pcbits
     END INTERFACE
     
     SAVE
@@ -7199,13 +7444,18 @@ SUBROUTINE loop2
     
     ! prepare constraints - determine number of constraints NCGB
     !                     - sort and split into blocks
-    !                     - update globalIndexRanges
+    !                     -  update globalIndexRanges
     CALL prpcon
 
     IF (metsol == 3.AND.icelim <= 0) THEN
         ! decomposition: enforce elimination
         icelim=1
         WRITE(lunlog,*) ' Elimination for constraints enforced for solution by decomposition!'
+    END IF
+    IF (metsol == 9.AND.icelim > 0) THEN
+        ! sparsePARDISO: enforce multipliers
+        icelim=0
+        WRITE(lunlog,*) ' Lagrange multipliers enforced for solution by sparsePARDISO!'
     END IF
     IF (matsto > 0.AND.icelim > 1) THEN
         ! decomposition: enforce elimination
@@ -7278,9 +7528,14 @@ SUBROUTINE loop2
     IF (icheck > 1) CALL clbmap(ntpgrp+ncgrp)
 
     IF(matsto == 2) THEN
+        ! MINRES, sparse storage
         CALL clbits(napgrp,mreqpe,mhispe,msngpe,mextnd,ndimbi,nspc) ! get dimension for bit storage, encoding, precision info
     END IF
-    
+    IF(matsto == 3) THEN
+        ! PARDISO, upper triangle (parameter groups) incl. rectangular part (constraints)
+        CALL plbits(nvpgrp,nvgb,ncgb,ndimbi) ! get dimension for bit storage, global parameters and constraints
+    END IF
+
     IF (imonit /= 0) THEN
         length=ntgb
         CALL mpalloc(measIndex,length,'measurement counter/index')
@@ -7544,6 +7799,27 @@ SUBROUTINE loop2
         END DO
         ioff=0
 
+        IF (matsto == 3) THEN
+            !$OMP  PARALLEL &
+            !$OMP  DEFAULT(PRIVATE) &
+            !$OMP  SHARED(numReadBuffer,readBufferPointer,readBufferDataI,MTHRD)
+            iproc=0
+            !$ IPROC=OMP_GET_THREAD_NUM()         ! thread number
+            DO ibuf=1,numReadBuffer
+                ist=readBufferPointer(ibuf)+1
+                nst=readBufferDataI(readBufferPointer(ibuf))
+                DO i=ist,nst                 ! store all combinations
+                    iext=readBufferDataI(i)             ! variable global index
+                    !$ IF (MOD(IEXT,MTHRD).EQ.IPROC) THEN  ! distinct column per thread
+                    DO l=i,nst
+                        jext=readBufferDataI(l)
+                        CALL inbits(iext,jext,1) ! save space
+                    END DO
+                    !$ ENDIF
+                END DO
+            END DO
+            !$OMP END PARALLEL
+        END IF
         IF (matsto == 2) THEN
             !$OMP  PARALLEL &
             !$OMP  DEFAULT(PRIVATE) &
@@ -7627,18 +7903,12 @@ SUBROUTINE loop2
             print *, i, itgbi, globalParLabelIndex(1,itgbi), npair, ':', vecPairedParGroups(:npair)
         END DO
         print *
-    END IF    
+    END IF
     
-    ! check constraints and measurements
+    ! check constraints
     IF(matsto == 2) THEN
           
         !     constraints and index pairs with Lagrange multiplier
-
-
-        !     constraints - determine number of constraints NCGB and index-pairs
-        !        Lagrange multiplier and global parameters
-
-
         inc=MAX(mreqpe, msngpe+1) !  keep constraints in double precision
 
         !  loop over (sorted) constraints
@@ -7653,9 +7923,26 @@ SUBROUTINE loop2
                 END IF
             END DO
         END DO
+    END IF
+    IF(matsto == 3) THEN
+        !  loop over (sorted) constraints
+        DO jcgb=1,ncgb
+            icgb=matConsSort(3,jcgb) ! unsorted constraint index
+            DO i=vecConsStart(icgb)+2,vecConsStart(icgb+1)-1
+                label=listConstraints(i)%label
+                itgbi=inone(label)
+                ij=globalParLabelIndex(2,itgbi)         ! change to variable parameter
+                IF(ij > 0.AND.listConstraints(i)%value /= 0.0_mpd) THEN
+                    ! non-zero coefficient
+                    CALL irbits(ij,jcgb)
+                END IF
+            END DO
+        END DO
+    END IF
 
+    ! check measurements
+    IF(matsto == 2 .OR. matsto == 3) THEN
         !     measurements - determine index-pairs
-
   
         i=1
         DO WHILE (i <= lenMeasurements)
@@ -7782,7 +8069,7 @@ SUBROUTINE loop2
                 labell=globalParLabelIndex(1,globalParVarToTotal(ib))
                 WRITE(*,*) ' Parameter block', i, ib-ia, jb-ja, labelf, labell
             ENDDO    
-        ENDIF 
+        ENDIF
         WRITE(lunlog,*)
         WRITE(lunlog,*) 'Detected', npblck, '(disjoint) parameter blocks, max size ', nparmx     
         WRITE(*,*)
@@ -7820,11 +8107,39 @@ SUBROUTINE loop2
         CALL mpalloc(sparseMatrixOffsets,two,length, 'sparse matrix row offsets')
         CALL ndbits(globalAllIndexGroups,ndimsa,sparseMatrixOffsets,ihis)
         ndgn=ndimsa(3)+ndimsa(4) ! actual number of off-diagonal elements
-        matwords=ndimsa(2)+length ! size of sparsity structure
+        matwords=ndimsa(2)+length*4 ! size of sparsity structure
     
         IF (mhispe > 0) THEN
             IF (nhistp /= 0) CALL hmprnt(ihis)
             CALL hmpwrt(ihis)
+        END IF
+    END IF
+    IF (matsto == 3) THEN
+        length=nagb+1
+        CALL mpalloc(csr3RowOffsets,length, 'sparse matrix row offsets (CSR3)')
+        IF (mpdbsz > 1) THEN
+            ! BSR3, check (for optimal) block size
+            mbwrds=0
+            DO i=1,mpdbsz
+                npdblk=(nagb-1)/ipdbsz(i)+1
+                length=INT(npdblk,mpl)
+                CALL mpalloc(vecBlockCounts,length, 'sparse matrix row offsets (CSR3)')
+                CALL pbsbits(globalAllIndexGroups,ipdbsz(i),nnzero,nblock,vecBlockCounts)
+                nbwrds=2*INT(nblock,mpl)*INT(ipdbsz(i)*ipdbsz(i)+1,mpl) ! number of words needed
+                IF ((i == 1).OR.(nbwrds < mbwrds)) THEN
+                   matbsz=ipdbsz(i)
+                   mbwrds=nbwrds
+                   csr3RowOffsets(1)=1
+                   DO k=1,npdblk
+                       csr3RowOffsets(k+1)=csr3RowOffsets(k)+vecBlockCounts(k)
+                   END DO
+                END IF
+                CALL mpdealloc(vecBlockCounts)
+            END DO
+        ELSE
+            ! CSR3
+            CALL prbits(globalAllIndexGroups,csr3RowOffsets)
+            !csr3RowOffsets(nvgb+2:)=csr3RowOffsets(nvgb+1) ! Lagrange multipliers (empty)
         END IF
     END IF
 
@@ -7958,7 +8273,11 @@ SUBROUTINE loop2
             WRITE(lu,*) '     METSOL = 7:  LAPACK factorization'
         ELSE IF(metsol == 8) THEN
             WRITE(lu,*) '     METSOL = 8:  LAPACK factorization'
-#endif             
+#ifdef PARDISO
+        ELSE IF(metsol == 9) THEN
+            WRITE(lu,*) '     METSOL = 9:  Intel oneMKL PARDISO'
+#endif
+#endif
         END IF
         WRITE(lu,*) '                  with',mitera,' iterations'
         IF(matsto == 0) THEN
@@ -7966,7 +8285,14 @@ SUBROUTINE loop2
         ELSE IF(matsto == 1) THEN
             WRITE(lu,*) '     MATSTO = 1:  full symmetric matrix, ', '(n*n+n)/2 elements' 
         ELSE IF(matsto == 2) THEN
-            WRITE(lu,*) '     MATSTO = 2:  sparse matrix'
+            WRITE(lu,*) '     MATSTO = 2:  sparse matrix (custom)'
+        ELSE IF(matsto == 3) THEN
+            IF (matbsz < 2) THEN
+                WRITE(lu,*) '     MATSTO = 3:  sparse matrix (upper triangle, CSR3)'
+            ELSE
+                WRITE(lu,*) '     MATSTO = 3:  sparse matrix (upper triangle, BSR3)'
+                WRITE(lu,*) '                  block size', matbsz
+            END IF
         END IF
         IF(npblck > 1) THEN    
             WRITE(lu,*) '                  block diagonal with', npblck, ' blocks'
@@ -8016,7 +8342,18 @@ SUBROUTINE loop2
 
     !     prepare matrix and gradient storage ------------------------------
 32  matsiz=0                  ! number of words for double, single precision storage
-    IF (matsto == 2) THEN     ! sparse matrix
+    IF (matsto == 3) THEN     ! sparse matrix (CSR3, BSR3)
+        npdblk=(nagb-1)/matbsz+1 ! number of row blocks
+        length=csr3RowOffsets(npdblk+1)-csr3RowOffsets(1)
+        matsiz(1)=length*INT(matbsz*matbsz,mpl)
+        matwords=(length+nagb+1)*2 ! size of sparsity structure
+        CALL mpalloc(csr3ColumnList,length,'sparse matrix column list (CSR3)')
+        IF (matbsz > 1) THEN
+            CALL pblbits(globalAllIndexGroups,matbsz,csr3RowOffsets,csr3ColumnList) ! BSR3
+        ELSE
+            CALL pcbits(globalAllIndexGroups,csr3RowOffsets,csr3ColumnList)         ! CSR3
+        END IF
+    ELSE IF (matsto == 2) THEN     ! sparse matrix (custom)
         matsiz(1)=ndimsa(3)+nagb
         matsiz(2)=ndimsa(4)
         CALL mpalloc(sparseMatrixColumns,ndimsa(2),'sparse matrix column list')
@@ -8242,7 +8579,7 @@ SUBROUTINE vmprep(msize)
     INTEGER(mpi) :: nextra
 #ifdef LAPACK64
     INTEGER :: nbopt, nboptx, ILAENV
-#endif    
+#endif
                          !
     INTEGER(mpl), INTENT(IN) :: msize(2)
 
@@ -8358,6 +8695,7 @@ SUBROUTINE vmprep(msize)
     length=nagb
     CALL mpalloc(globalCorrections,length,'corrections')      ! double prec corrections
 
+    length=nagb
     CALL mpalloc(workspaceD,length,'auxiliary array (D1)')  ! double aux 1
     CALL mpalloc(workspaceLinesearch,length,'auxiliary array (D2)')  ! double aux 2
     CALL mpalloc(workspaceI, length,'auxiliary array (I)')   ! int aux 1
@@ -9134,6 +9472,234 @@ SUBROUTINE lpavat(t)
     END DO
 
 END SUBROUTINE lpavat
+
+#ifdef PARDISO
+INCLUDE 'mkl_pardiso.f90'
+!===============================================================================
+! Copyright 2004-2022 Intel Corporation.
+!
+! This software and the related documents are Intel copyrighted  materials,  and
+! your use of  them is  governed by the  express license  under which  they were
+! provided to you (License).  Unless the License provides otherwise, you may not
+! use, modify, copy, publish, distribute,  disclose or transmit this software or
+! the related documents without Intel's prior written permission.
+!
+! This software and the related documents  are provided as  is,  with no express
+! or implied  warranties,  other  than those  that are  expressly stated  in the
+! License.
+!===============================================================================
+!
+!   Content : Intel(R) oneAPI Math Kernel Library (oneMKL) PARDISO Fortran-90
+!             use case
+!
+!*******************************************************************************
+
+!> Solution with Intel(R) oneAPI Math Kernel Library (oneMKL) PARDISO
+!!
+!! Sparse matrix
+!!
+SUBROUTINE mspardiso
+    USE mkl_pardiso
+    USE mpmod
+    USE mpdalc
+    IMPLICIT NONE
+
+    !.. Internal solver memory pointer
+    TYPE(MKL_PARDISO_HANDLE) :: pt(64)    ! Handle to internal data structure
+    !.. All other variables
+    INTEGER(mpl), PARAMETER :: maxfct =1  ! Max. number of factors with identical sparsity structure kept in memory
+    INTEGER(mpl), PARAMETER :: mnum = 1   ! Actual factor to use
+    INTEGER(mpl), PARAMETER :: nrhs = 1   ! Number of right hand sides
+
+    INTEGER(mpl) :: mtype                  ! Matrix type (symmetric, pos. def.: 2, indef.: -2)
+    INTEGER(mpl) :: phase                  ! Solver phase(s) to be executed
+    INTEGER(mpl) :: error                  ! Error code
+    INTEGER(mpl) :: msglvl                 ! Message level
+
+    INTEGER(mpi) :: i
+    INTEGER(mpl) :: ij
+    INTEGER(mpl) :: idum(1)
+    INTEGER(mpi) :: lun
+    INTEGER(mpl) :: length
+    INTEGER(mpi) :: nfill
+    INTEGER(mpi) :: npdblk
+    REAL(mpd) :: adum(1)
+    REAL(mpd) :: ddum(1)
+
+    INTEGER(mpl) :: iparm(64)
+    REAL(mpd), ALLOCATABLE :: b( : )       ! Right hand side (of equations system)
+    REAL(mpd), ALLOCATABLE :: x( : )       ! Solution (of equations system)
+    SAVE
+
+    lun=lunlog                       ! log file
+
+    error  = 0 ! initialize error flag
+    msglvl = ipddbg ! print statistical information
+    npdblk=(nfgb-1)/matbsz+1 ! number of row blocks
+
+    IF(icalcm == 1) THEN
+        mtype = 2                    ! positive definite symmetric matrix
+        IF (nfgb > nvgb)  mtype = -2 ! indefinte symmetric matrix (Lagrange multipliers)
+
+        !$POMP INST BEGIN(mspd00)
+        WRITE(*,*)
+        WRITE(*,*) 'MSPARDISO: number of non-zero elements = ', csr3RowOffsets(npdblk+1)-csr3RowOffsets(1)
+        ! fill up last block?
+        nfill = npdblk*matbsz-nfgb
+        IF (nfill > 0) THEN
+            WRITE(*,*) 'MSPARDISO: number of rows to fill up   = ', nfill
+            ! end of last block
+            ij = (csr3RowOffsets(npdblk+1)-csr3RowOffsets(1))*INT(matbsz,mpl)*INT(matbsz,mpl)
+            DO i=1,nfill
+                globalMatD(ij) = 1.0_mpd
+                ij = ij-matbsz-1 ! back one row and one column in last block
+            END DO
+        END IF
+
+        ! close previous PARADISO run
+        IF (ipdmem > 0) THEN
+            !.. Termination and release of memory
+            phase = -1 ! release internal memory
+            CALL pardiso_64(pt, maxfct, mnum, mtype, phase, INT(npdblk,mpl), adum, idum, idum, &
+                idum, nrhs, iparm, msglvl, ddum, ddum, error)
+            IF (error /= 0) THEN
+                WRITE(lun,*) 'The following ERROR was detected: ', error
+                WRITE(*,'(A,2I10)') ' PARDISO release failed (phase, error): ', phase, error
+                IF (ipddbg == 0) WRITE(*,*) '        rerun with "debugPARDISO" for more info'
+                CALL peend(40,'Aborted, other error: PARDISO release')
+                STOP 'MSPARDISO: stopping due to error in PARDISO release'
+            END IF
+            ipdmem=0
+        END IF
+
+        !..
+        !.. Set up PARDISO control parameter
+        !..
+        iparm=0 ! using defaults
+        iparm(2)  =  2 ! fill-in reordering from METIS
+        iparm(10) =  8 ! perturb the pivot elements with 1E-8
+        iparm(18) = -1 ! Output: number of nonzeros in the factor LU
+        iparm(19) = -1 ! Output: Mflops for LU factorization
+        iparm(21) =  1 ! pivoting for symmetric indefinite matrices
+        DO i=1, lenPARDISO
+            iparm(listPARDISO(i)%label)=listPARDISO(i)%ivalue
+        END DO
+        IF (iparm(1) == 0) WRITE(lun,*) 'PARDISO using defaults '
+        IF (iparm(43) /= 0) THEN
+            WRITE(lun,*) 'PARDISO: computation of the diagonal of inverse matrix not implemented !'
+            iparm(43) =  0 ! no computation of the diagonal of inverse matrix
+        END IF
+
+        ! necessary for the FIRST call of the PARDISO solver.
+        DO i = 1, 64
+            pt(i)%DUMMY =  0
+        END DO
+        !$POMP INST END(mspd00)
+    END IF
+
+    IF(icalcm == 1) THEN
+        ! monitor progress
+        IF(monpg1 > 0) THEN
+            WRITE(lunlog,*) 'Decomposition of global matrix (A->L*D*L^t)'
+            CALL monini(lunlog,monpg1,monpg2)
+        END IF
+        ! decompose and solve
+        !.. Reordering and Symbolic Factorization, This step also allocates
+        ! all memory that is necessary for the factorization
+        !$POMP INST BEGIN(mspd11)
+        phase = 11 ! only reordering and symbolic factorization
+        IF (matbsz > 1) THEN
+            iparm(1) = 1 ! non default setting
+            iparm(37) = matbsz ! using BSR3 instead of CSR3
+        END IF
+        IF (ipddbg > 0) THEN
+            DO i=1,64
+                WRITE(lun,*) ' iparm(',i,') =', iparm(i)
+            END DO
+        END IF
+        CALL pardiso_64(pt, maxfct, mnum, mtype, phase, INT(npdblk,mpl), globalMatD, csr3RowOffsets, csr3ColumnList, &
+            idum, nrhs, iparm, msglvl, ddum, ddum, error)
+        !$POMP INST END(mspd11)
+        WRITE(lun,*) 'PARDISO reordering completed ... '
+        WRITE(lun,*) 'PARDISO peak memory required (KB)', iparm(15)
+        IF (ipddbg > 0) THEN
+            DO i=1,64
+                WRITE(lun,*) ' iparm(',i,') =', iparm(i)
+            END DO
+        END IF
+        IF (error /= 0) THEN
+            WRITE(lun,*) 'The following ERROR was detected: ', error
+            WRITE(*,'(A,2I10)') ' PARDISO decomposition failed (phase, error): ', phase, error
+            IF (ipddbg == 0) WRITE(*,*) '        rerun with "debugPARDISO" for more info'
+            CALL peend(40,'Aborted, other error: PARDISO reordering')
+            STOP 'MSPARDISO: stopping due to error in PARDISO reordering'
+        END IF
+        IF (iparm(60) == 0) THEN
+            ipdmem=ipdmem+max(iparm(15),iparm(16))+iparm(17) ! in core
+        ELSE
+            ipdmem=ipdmem+max(iparm(15),iparm(16))+iparm(63) ! out of core
+        END IF
+        WRITE(lun,*) 'Size (KB) of allocated memory  = ',ipdmem
+        WRITE(lun,*) 'Number of nonzeros in factors  = ',iparm(18)
+        WRITE(lun,*) 'Number of factorization MFLOPS = ',iparm(19)
+
+        !.. Factorization.
+        !$POMP INST BEGIN(mspd22)
+        phase = 22 ! only factorization
+        CALL pardiso_64(pt, maxfct, mnum, mtype, phase, INT(npdblk,mpl), globalMatD, csr3RowOffsets, csr3ColumnList, &
+            idum, nrhs, iparm, msglvl, ddum, ddum, error)
+        !$POMP INST END(mspd22)
+        WRITE(lun,*) 'PARDISO factorization completed ... '
+        IF (ipddbg > 0) THEN
+            DO i=1,64
+                WRITE(lun,*) ' iparm(',i,') =', iparm(i)
+            END DO
+        END IF
+        IF (error /= 0) THEN
+            WRITE(lun,*) 'The following ERROR was detected: ', error
+            WRITE(*,'(A,2I10)') ' PARDISO decomposition failed (phase, error): ', phase, error
+            IF (ipddbg == 0) WRITE(*,*) '        rerun with "debugPARDISO" for more info'
+            CALL peend(40,'Aborted, other error: PARDISO factorization')
+            STOP 'MSPARDISO: stopping due to error in PARDISO factorization'
+        ENDIF
+        IF (mtype < 0) THEN
+            IF (iparm(14) > 0) &
+            WRITE(lun,*) 'Number of perturbed pivots     = ',iparm(14)
+            WRITE(lun,*) 'Number of positive eigenvalues = ',iparm(22)-nfill
+            WRITE(lun,*) 'Number of negative eigenvalues = ',iparm(23)
+        ELSE IF (iparm(30) > 0) THEN
+            WRITE(lun,*) 'Equation with bad pivot (<=0.) = ',iparm(30)
+        END IF
+
+        IF (monpg1 > 0) CALL monend()
+    END IF
+
+    ! backward/forward substitution
+    !.. Back substitution and iterative refinement
+    length=nfgb+nfill
+    CALL mpalloc(b,length,' PARDISO r.h.s')
+    CALL mpalloc(x,length,' PARDISO solution')
+    b(:nfgb) = globalCorrections
+    !$POMP INST BEGIN(mspd33)
+    iparm(6) = 0 ! don't update r.h.s. with solution
+    phase = 33 ! only solving
+    CALL pardiso_64(pt, maxfct, mnum, mtype, phase, INT(npdblk,mpl), globalMatD, csr3RowOffsets, csr3ColumnList, &
+        idum, nrhs, iparm, msglvl, b, x, error)
+    !$POMP INST END(mspd33)
+    globalCorrections = x(:nfgb)
+    CALL mpdealloc(x)
+    CALL mpdealloc(b)
+    WRITE(lun,*) 'PARDISO solve completed ... '
+    IF (error /= 0) THEN
+        WRITE(lun,*) 'The following ERROR was detected: ', error
+        WRITE(*,'(A,2I10)') ' PARDISO decomposition failed (phase, error): ', phase, error
+        IF (ipddbg == 0) WRITE(*,*) '        rerun with "debugPARDISO" for more info'
+        CALL peend(40,'Aborted, other error: PARDISO solve')
+        STOP 'MSPARDISO: stopping due to error in PARDISO solve'
+    ENDIF
+
+END SUBROUTINE mspardiso
+#endif
 #endif
 
 !> Solution by diagonalization.
@@ -9691,6 +10257,14 @@ SUBROUTINE xloopn                !
                 WRITE(lunp,121) 'solution method:', 'LAPACK factorization (DPOTRF)'
             ENDIF
             IF(ilperr == 1) WRITE(lunp,121) ' ', 'with error calculation (D??TRI)'
+#ifdef PARDISO
+        ELSE IF(metsol == 9) THEN
+            IF (matbsz < 2) THEN
+                WRITE(lunp,121) 'solution method:', 'Intel oneMKL PARDISO (sparse matrix (CSR3))'
+            ELSE
+                WRITE(lunp,121) 'solution method:', 'Intel oneMKL PARDISO (sparse matrix (BSR3))'
+            ENDIF
+#endif
 #endif
         END IF
         WRITE(lunp,123) 'convergence limit at Delta F=',dflim
@@ -9923,7 +10497,11 @@ SUBROUTINE xloopn                !
                 CALL mdptrf                   ! LAPACK (packed storage)
             ELSE IF(metsol == 8) THEN
                 CALL mdutrf                   ! LAPACK (unpacked storage)
-#endif                
+#ifdef PARDISO
+            ELSE IF(metsol == 9) THEN
+                CALL mspardiso                ! Intel oneMKL PARDISO (sparse matrix (CSR3, upper triangle))
+#endif
+#endif
             END IF
             nloopsol=nloopn                   ! (new) solution for this nloopn
 
@@ -10090,7 +10668,7 @@ SUBROUTINE xloopn                !
 
     IF(ALLOCATED(workspaceDiag)) THEN ! provide parameter errors?
 #ifdef LAPACK64
-        IF (metsol >= 7) THEN
+        IF (metsol == 7.OR.metsol == 8) THEN
             ! inverse from factorization
             ! loop over blocks (multiple blocks only with elimination !)
             DO ib=1,npblck
@@ -10140,7 +10718,7 @@ SUBROUTINE xloopn                !
                 END IF
             END DO
         END IF
-#endif    
+#endif
         !use elimination for constraints ?
         IF(nfgb < nvgb) THEN
             ! extend, transform matrix
@@ -10165,7 +10743,7 @@ SUBROUTINE xloopn                !
 #ifdef LAPACK64                    
             ELSE ! unpack storage, use LAPACK
                 CALL lpavat(.false.)
-#endif            
+#endif
             END IF
             IF(monpg1 > 0) CALL monend()
         END IF
@@ -10361,7 +10939,7 @@ SUBROUTINE xloopn                !
 #ifdef LAPACK64
     ELSE IF(metsol == 7) THEN
         ! LAPACK - nothing foreseen yet
-#endif  
+#endif
     END IF
 
     CALL prtglo              ! print result
@@ -11077,7 +11655,11 @@ SUBROUTINE filetx ! ---------------------------------------------------
         matsto=1
     ELSE IF(metsol == 8) THEN   ! if LAPACK
         matsto=0
-#endif    
+#ifdef PARDISO
+    ELSE IF(metsol == 9) THEN   ! if Intel oneMKL PARDISO
+        matsto=3
+#endif
+#endif
     ELSE
         WRITE(*,*) 'MINRES forced with sparse matrix!'
         WRITE(*,*) ' '
@@ -11118,7 +11700,11 @@ SUBROUTINE filetx ! ---------------------------------------------------
         WRITE(*,*) '     METSOL = 7:  LAPACK factorization'
     ELSE IF(metsol == 8) THEN
         WRITE(*,*) '     METSOL = 8:  LAPACK factorization'
-#endif  
+#ifdef PARDISO
+    ELSE IF(metsol == 9) THEN
+        WRITE(*,*) '     METSOL = 9:  Intel oneMKL PARDISO'
+#endif
+#endif
     END IF
 
     WRITE(*,*) '                  with',mitera,' iterations'
@@ -11128,7 +11714,13 @@ SUBROUTINE filetx ! ---------------------------------------------------
     ELSEIF(matsto == 1) THEN
         WRITE(*,*) '     MATSTO = 1:  full symmetric matrix, ', '(n*n+n)/2 elements'
     ELSE IF(matsto == 2) THEN
-        WRITE(*,*) '     MATSTO = 2:  sparse matrix'
+        WRITE(*,*) '     MATSTO = 2:  sparse matrix (custom)'
+    ELSE IF(matsto == 3) THEN
+        IF (mpdbsz == 0) THEN
+            WRITE(*,*) '     MATSTO = 3:  sparse matrix (upper triangle, CSR3)'
+        ELSE
+            WRITE(*,*) '     MATSTO = 3:  sparse matrix (upper triangle, BSR3)'
+        END IF
     END IF
     IF(mbandw /= 0.AND.(metsol >= 4.AND. metsol <7)) THEN ! band matrix as MINRES preconditioner
         WRITE(*,*) '                  and band matrix, width',mbandw
@@ -11270,10 +11862,14 @@ SUBROUTINE intext(text,nline)
     INTEGER(mpi), INTENT(IN) :: nline
 
 #ifdef LAPACK64
+#ifdef PARDISO
+    PARAMETER (nkeys=7,nmeth=10)
+#else
     PARAMETER (nkeys=6,nmeth=9)
+#endif
 #else
     PARAMETER (nkeys=6,nmeth=7)
-#endif    
+#endif
     CHARACTER (LEN=16) :: methxt(nmeth)
     CHARACTER (LEN=16) :: keylst(nkeys)
     CHARACTER (LEN=32) :: keywrd
@@ -11281,8 +11877,13 @@ SUBROUTINE intext(text,nline)
     CHARACTER (LEN=itemCLen) :: ctext
     INTEGER(mpi), PARAMETER :: mnum=100
     REAL(mpd) :: dnum(mnum)
-    INTEGER(mpi) :: lpvs    ! ... integer
-    REAL(mpd)    :: plvs    ! ... float
+#ifdef LAPACK64
+#ifdef PARDISO
+    INTEGER(mpi) :: ipvs    ! ... integer value
+#endif
+#endif
+    INTEGER(mpi) :: lpvs    ! ... integer label
+    REAL(mpd)    :: plvs    ! ... float value
 
     INTERFACE
         SUBROUTINE addItem(length,list,label,value)
@@ -11299,18 +11900,32 @@ SUBROUTINE intext(text,nline)
             INTEGER(mpi), INTENT(IN) :: label
             CHARACTER(LEN = itemCLen), INTENT(IN) :: text
         END SUBROUTINE addItemC
+        SUBROUTINE addItemI(length,list,label,ivalue)
+            USE mpmod
+            INTEGER(mpi), INTENT(IN OUT) :: length
+            TYPE(listItemI), DIMENSION(:), INTENT(IN OUT), ALLOCATABLE :: list
+            INTEGER(mpi), INTENT(IN) :: label
+            INTEGER(mpi), INTENT(IN) :: ivalue
+        END SUBROUTINE addItemI
     END INTERFACE
-
-    DATA keylst/'unknown','parameter','constraint','measurement','method','comment'/
 
     SAVE
 #ifdef LAPACK64
+#ifdef PARDISO
+    DATA keylst/'unknown','parameter','constraint','measurement','method','comment','pardiso'/
+    DATA methxt/'diagonalization','inversion','fullMINRES', 'sparseMINRES', &
+        'fullMINRES-QLP', 'sparseMINRES-QLP', 'decomposition', 'fullLAPACK', 'unpackedLAPACK', &
+        'sparsePARDISO'/
+#else
+    DATA keylst/'unknown','parameter','constraint','measurement','method','comment'/
     DATA methxt/'diagonalization','inversion','fullMINRES', 'sparseMINRES', &
         'fullMINRES-QLP', 'sparseMINRES-QLP', 'decomposition', 'fullLAPACK', 'unpackedLAPACK'/
-#else    
+#endif
+#else
+    DATA keylst/'unknown','parameter','constraint','measurement','method','comment'/
     DATA methxt/'diagonalization','inversion','fullMINRES', 'sparseMINRES', &
         'fullMINRES-QLP', 'sparseMINRES-QLP', 'decomposition'/
-#endif        
+#endif
     DATA lkey/-1/                 ! last keyword
 
     !     ...
@@ -11600,7 +12215,7 @@ SUBROUTINE intext(text,nline)
             icelim=2
             RETURN
         END IF
-#endif        
+#endif
         
         keystx='withmultipliers'
         mat=matint(text(keya:keyb),keystx,npat,ntext) ! comparison
@@ -11802,7 +12417,33 @@ SUBROUTINE intext(text,nline)
             ilperr=1
             RETURN
         END IF
-#endif  
+#ifdef PARDISO
+        keystx='debugPARDISO' ! enable debug for Intel oneMKL PARDISO
+        mat=matint(text(ia:ib),keystx,npat,ntext)
+        IF(100*mat >= 80*max(npat,ntext)) THEN ! 80% (symmetric) matching
+            ipddbg=1
+            RETURN
+        END IF
+
+        keystx='blocksizePARDISO' ! use BSR3 for Intel oneMKL PARDISO, list of (increasing) block sizes to be tried
+        mat=matint(text(keya:keyb),keystx,npat,ntext) ! comparison
+        IF(100*mat >= 80*max(npat,ntext).AND.mnrsel < 100) THEN ! 80% (symmetric) matching
+            nl=MIN(nums,10-mpdbsz)
+            DO k=1,nl
+                IF (NINT(dnum(k),mpi) > 0) THEN
+                    IF (mpdbsz == 0) THEN
+                        mpdbsz=mpdbsz+1
+                        ipdbsz(mpdbsz)=NINT(dnum(k),mpi)
+                    ELSE IF (NINT(dnum(k),mpi) > ipdbsz(mpdbsz)) THEN
+                        mpdbsz=mpdbsz+1
+                        ipdbsz(mpdbsz)=NINT(dnum(k),mpi)
+                    END IF
+                END IF
+            END DO
+            RETURN
+        END IF
+#endif
+#endif
         keystx='fortranfiles'
         mat=matint(text(ia:ib),keystx,npat,ntext) ! comparison
         IF(mat == max(npat,ntext)) RETURN
@@ -11930,7 +12571,12 @@ SUBROUTINE intext(text,nline)
                     ELSE IF(i == 9) THEN       ! unpackedLAPACK factorization
                         metsol=8
                         matsto=0
-#endif                        
+#ifdef PARDISO
+                    ELSE IF(i == 10) THEN       ! Intel oneMKL PARDISO (sparse matrix (CSR3 or BSR3, upper triangle))
+                        metsol=9
+                        matsto=3
+#endif
+#endif
                     END IF
                 END IF
             END DO
@@ -12012,6 +12658,30 @@ SUBROUTINE intext(text,nline)
                 WRITE(*,*) 'Status: continuation comment'
                 WRITE(*,*) '> ',text(1:nab)
             END IF
+#ifdef LAPACK64
+#ifdef PARDISO
+        ELSE IF(lkey == 7) THEN         ! Intel oneMKL PARDISO parameters
+            ier=0
+            DO i=1,nums,2
+                label=NINT(dnum(i),mpi)
+                IF(label <= 0.OR.label > 64) ier=1
+            END DO
+            IF(MOD(nums,2) /= 0) ier=1 ! reject odd number
+            !            WRITE(*,*) 'IER NUMS ',IER,NUMS
+            IF(ier == 0) THEN
+                DO i=1,nums,2
+                    lpvs=NINT(dnum(i),mpi)   ! label
+                    ipvs=NINT(dnum(i+1),mpi) ! parameter
+                    CALL addItemI(lenPARDISO,listPARDISO,lpvs,ipvs)
+                END DO
+            ELSE
+                kkey=0
+                WRITE(*,*) 'Wrong text in line',nline
+                WRITE(*,*) 'Status continuation measurement'
+                WRITE(*,*) '> ',text(1:nab)
+            END IF
+#endif
+#endif
         END IF
     END IF
 END SUBROUTINE intext
@@ -12099,6 +12769,47 @@ SUBROUTINE addItemC(length,list,label,text)
     list(length)%text=text
 
 END SUBROUTINE addItemC
+
+!> add item to list
+!!
+!! \param [in,out]    length     length of list
+!! \param [in,out]    list       list of items
+!! \param [in]        label      item label
+!! \param [in]        ivalue      item value
+!!
+SUBROUTINE addItemI(length,list,label,ivalue)
+    USE mpdef
+    USE mpdalc
+
+    INTEGER(mpi), INTENT(IN OUT) :: length
+    TYPE(listItemI), DIMENSION(:), INTENT(IN OUT), ALLOCATABLE :: list
+    INTEGER(mpi), INTENT(IN) :: label
+    INTEGER(mpi), INTENT(IN) :: ivalue
+
+    INTEGER(mpl) :: newSize
+    INTEGER(mpl) :: oldSize
+    TYPE(listItemI), DIMENSION(:), ALLOCATABLE :: tempList
+
+    IF (length == 0 ) THEN  ! initial list with size = 100
+        newSize = 100
+        CALL mpalloc(list,newSize,' list ')
+    ENDIF
+    oldSize=size(list,kind=mpl)
+    IF (length >= oldSize) THEN ! increase sizeby 20% + 100
+        newSize = oldSize + oldSize/5 + 100
+        CALL mpalloc(tempList,oldSize,' temp. list ')
+        tempList=list
+        CALL mpdealloc(list)
+        CALL mpalloc(list,newSize,' list ')
+        list(1:oldSize)=tempList(1:oldSize)
+        CALL mpdealloc(tempList)
+    ENDIF
+    ! add to end of list
+    length=length+1
+    list(length)%label=label
+    list(length)%ivalue=ivalue
+
+END SUBROUTINE addItemI
 
 !> Start of 'module' printout.
 SUBROUTINE mstart(text)

@@ -48,4 +48,9 @@ MODULE mpdef
         INTEGER(mpi) :: label
         CHARACTER(len = itemCLen) :: text
     END TYPE listItemC
+    !> integer list items from steering file
+    TYPE listItemI
+        INTEGER(mpi) :: label
+        INTEGER(mpi) :: ivalue
+    END TYPE listItemI
 END MODULE mpdef
