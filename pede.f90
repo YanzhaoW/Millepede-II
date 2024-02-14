@@ -9,7 +9,7 @@
 !! \author Claus Kleinwort, DESY (maintenance and developement)
 !!
 !! \copyright
-!! Copyright (c) 2009 - 2023 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2009 - 2024 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -53,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-14-00 \
+!!         git clone --depth 1 --branch V04-15-00 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -177,6 +177,7 @@
 !! * 231020: Define proper \ref par-linesearch "line search" parameters for LAPACK too.
 !! * 231218: New optional method \ref ch-pardiso "sparsePARDISO"
 !!   using the Intel oneMKL PARDISO solver for sparse matrices.
+!! * 240214: Fix severe problem with external measurements depending on multiple global parameters.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -3631,8 +3632,12 @@ SUBROUTINE loopn
             factrj=listMeasurements(j)%value
             itgbij=inone(listMeasurements(j)%label) ! total parameter index
             IF(itgbij /= 0) THEN
-                dsum=dsum+factrj*globalParameter(itgbij)     ! residuum
+                dsum=dsum+factrj*globalParameter(itgbij)     ! update residuum
             END IF
+        END DO
+        DO j=ia,ib
+            factrj=listMeasurements(j)%value
+            itgbij=inone(listMeasurements(j)%label) ! total parameter index
             !      add to vector
             ivgbij=0
             IF(itgbij /= 0) ivgbij=globalParLabelIndex(2,itgbij) ! -> index of variable global parameter
