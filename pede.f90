@@ -178,6 +178,7 @@
 !! * 231218: New optional method \ref ch-pardiso "sparsePARDISO"
 !!   using the Intel oneMKL PARDISO solver for sparse matrices.
 !! * 240214: Fix severe problem with external measurements depending on multiple global parameters.
+!! * 240227: Quick fix for possible integer overflow in summing up global Chi2 (ADDSUM). Needs careful revision.
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -13275,10 +13276,10 @@ SUBROUTINE addsum(add)
         accurateDsum=accurateDsum-16.0_mpd
         accurateNsum=accurateNsum+16
     END IF
-    IF(accurateNsum > nexp20) THEN      ! if > 2^20: + - 2^20
+    DO WHILE(accurateNsum > nexp20)        ! if > 2^20: + - 2^20
         accurateNexp=accurateNexp+1
         accurateNsum=accurateNsum-nexp20
-    END IF
+    END DO
     RETURN
 END SUBROUTINE addsum
 
