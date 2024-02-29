@@ -53,7 +53,7 @@
 !! 1. Download the software package from the DESY \c gitlab server to
 !!    \a target directory, e.g. (shallow clone):
 !!
-!!         git clone --depth 1 --branch V04-15-00 \
+!!         git clone --depth 1 --branch V04-16-00 \
 !!             https://gitlab.desy.de/claus.kleinwort/millepede-ii.git target
 !!
 !! 2. Create **Pede** executable (in \a target directory):
@@ -179,6 +179,7 @@
 !!   using the Intel oneMKL PARDISO solver for sparse matrices.
 !! * 240214: Fix severe problem with external measurements depending on multiple global parameters.
 !! * 240227: Quick fix for possible integer overflow in summing up global Chi2 (ADDSUM). Needs careful revision.
+!! * 240229: Summation of global Chi2 and NDF revised (no more 32bit variables, update per record).
 !!
 !! \section tools_sec Tools
 !! The subdirectory \c tools contains some useful scripts:
@@ -1011,6 +1012,16 @@ PROGRAM mptwo
         WRITE(*,*) 'Number of threads for LAPACK: ', c6
     END IF  
 #endif
+    cols=mthrd
+    CALL mpalloc(globalChi2SumD,cols,'fractional part of Chi2 sum')
+    globalChi2SumD=0.0_mpd
+    CALL mpalloc(globalChi2SumI,cols,'integer part of Chi2 sum')
+    globalChi2SumI=0_mpl
+    CALL mpalloc(globalNdfSum,cols,'NDF sum')
+    globalNdfSum=0_mpl
+    CALL mpalloc(globalNdfSumW,cols,'weighted NDF sum')
+    globalNdfSumW=0.0_mpd
+
     IF (ncache < 0) THEN
         ncache=25000000*mthrd  ! default cache size (100 MB per thread)
     ENDIF
@@ -3366,7 +3377,6 @@ SUBROUTINE loopn
     INTEGER(mpi) :: lastit
     INTEGER(mpi) :: lun
     INTEGER(mpi) :: ncrit
-    INTEGER(mpi) :: ndfs
     INTEGER(mpi) :: ngras
     INTEGER(mpi) :: nparl
     INTEGER(mpi) :: nr
@@ -3379,9 +3389,8 @@ SUBROUTINE loopn
 
     REAL(mpd):: adder
     REAL(mpd)::funref
-    REAL(mpd)::dchi2s
     REAL(mpd)::matij
-    REAL(mpd)::sndf
+
     SAVE
     !     ...
 
@@ -3392,8 +3401,6 @@ SUBROUTINE loopn
     END IF
 
     nloopn=nloopn+1           ! increase loop counter
-    ndfsum=0
-    sumndf=0.0_mpd
     funref=0.0_mpd
 
     IF(nloopn == 1) THEN      ! book histograms for 1. iteration
@@ -3474,13 +3481,7 @@ SUBROUTINE loopn
     DO
         CALL peread(nr)  ! read records
         CALL peprep(1)   ! prepare records
-        ndfs  =0
-        sndf  =0.0_mpd
-        dchi2s=0.0_mpd
-        CALL loopbf(nrejec,ndfs,sndf,dchi2s,nfiles,jfd,cfd,dfd)
-        ndfsum=ndfsum+ndfs
-        sumndf=sumndf+sndf
-        CALL addsum(dchi2s)
+        CALL loopbf(nrejec,nfiles,jfd,cfd,dfd)
         IF (nr <= 0) EXIT ! next block of events ?
     END DO
     ! sum up RHS (over threads) once (reduction in LOOPBF: summation for each block)
@@ -3602,7 +3603,7 @@ SUBROUTINE loopn
             itgbi=globalParVarToTotal(ivgb) ! global parameter index
             globalVector(ivgb)=globalVector(ivgb) -globalParameter(itgbi)*globalParPreWeight(ivgb)
             adder=globalParPreWeight(ivgb)*globalParameter(itgbi)**2
-            CALL addsum(adder)
+            CALL addsums(1, adder, 0, 1.0_mpl)
         END DO
     END IF
 
@@ -3662,14 +3663,16 @@ SUBROUTINE loopn
         END DO
 
         adder=weight*dsum**2
-        CALL addsum(adder)   ! accumulate chi-square
+        CALL addsums(1, adder, 1, 1.0_mpl)
 
     END DO
 
     !     ----- printout ---------------------------------------------------
 
 
-    CALL getsum(fvalue)   ! get accurate sum (Chi^2)
+    ! get accurate sum (Chi^2, (w)NDF)
+    CALL getsums(fvalue,ndfsum,sumndf)
+
     flines=0.5_mpd*fvalue   ! Likelihood function value
     rloop=iterat+0.01*nloopn
     actfun=REAL(funref-fvalue,mps)
@@ -4252,15 +4255,12 @@ END SUBROUTINE mgupdt
 !! Based on the expected computing cost the faster solution method is selected.
 !!
 !! \param [in,out]  nrej     number of rejected records
-!! \param [in,out]  ndfs     sum(ndf)
-!! \param [in,out]  sndf     sum(weighted ndf)
-!! \param [in,out]  dchi2s   sum(weighted chi2)
 !! \param [in]      numfil   number of binary files
 !! \param [in,out]  naccf    number of accepted records per binary file
 !! \param [in,out]  chi2f    sum(chi2/ndf) per binary file
 !! \param [in,out]  ndff     sum(ndf) per binary file
 
-SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
+SUBROUTINE loopbf(nrej,numfil,naccf,chi2f,ndff)
     USE mpmod
 
     IMPLICIT NONE
@@ -4351,7 +4351,6 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     INTEGER(mpi) :: nan
     INTEGER(mpi) :: nb
     INTEGER(mpi) :: ndf
-    INTEGER(mpi) :: ndfsd
     INTEGER(mpi) :: ndown
     INTEGER(mpi) :: neq
     INTEGER(mpi) :: nfred
@@ -4367,9 +4366,6 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     INTEGER(mpi) :: npar
 
     INTEGER(mpi), INTENT(IN OUT)                     :: nrej(0:3)
-    INTEGER(mpi), INTENT(IN OUT)                     :: ndfs
-    REAL(mpd), INTENT(IN OUT)            :: sndf
-    REAL(mpd), INTENT(IN OUT)            :: dchi2s
     INTEGER(mpi), INTENT(IN)                         :: numfil
     INTEGER(mpi), INTENT(IN OUT)                     :: naccf(numfil)
     REAL(mps), INTENT(IN OUT)                        :: chi2f(numfil)
@@ -4402,7 +4398,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     iprdbg=-1
 
     ! parallelize record loop
-    ! private copy of NDFS,.. for each thread, combined at end, init with 0.
+    ! private copy of NREJ,.. for each thread, combined at end, init with 0.
     !$OMP  PARALLEL DO &
     !$OMP   DEFAULT(PRIVATE) &
     !$OMP   SHARED(numReadBuffer,readBufferPointer,readBufferDataI, &
@@ -4414,7 +4410,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
     !$OMP      NAGB,NVGB,NAGBN,ICALCM,ICHUNK,NLOOPN,NRECER,NPRDBG,IPRDBG, &
     !$OMP      NEWITE,CHICUT,LHUBER,CHUBER,ITERAT,NRECPR,MTHRD,NSPC,NAEQN, &
     !$OMP      DWCUT,CHHUGE,NRECP2,CAUCHY,LFITNP,LFITBB,IMONIT,IMONMD,MONPG1,LUNLOG) &
-    !$OMP   REDUCTION(+:NDFS,SNDF,DCHI2S,NREJ,NBNDR,NACCF,CHI2F,NDFF) &
+    !$OMP   REDUCTION(+:NREJ,NBNDR,NACCF,CHI2F,NDFF) &
     !$OMP   REDUCTION(MAX:NBNDX,NBDRX) &
     !$OMP   REDUCTION(MIN:NREC3) &
     !$OMP   SCHEDULE(DYNAMIC,ICHUNK)
@@ -4620,7 +4616,6 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             ibandh(i)=0
         END DO
         idiag=1
-        ndfsd=0
   
         iter=0
         resmax=0.0
@@ -4929,9 +4924,6 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
             IF(iter == 1.AND.lhist) CALL hmpent(4,chndf) ! histogram chi^2/Ndf
         END DO  ! outlier iteration loop
   
-        ndfs=ndfs+ndf              ! (local) sum of Ndf
-        sndf=sndf+REAL(ndf,mpd)*dw1  ! (local) weighted sum of Ndf
-  
         !      ----- reject eventually ------------------------------------------
   
         IF(newite.AND.iterat == 2) THEN ! find record with largest Chi^2/Ndf
@@ -4961,8 +4953,8 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                         WRITE(1,*) '   ---> rejected!'
                     END IF
                     !              add to FVALUE
-                    dchi2=chlimt               ! total contribution limit
-                    dchi2s=dchi2s+dchi2*dw1    ! add total contribution
+                    dchi2=chlimt                           ! total contribution limit
+                    CALL addsums(iproc+1, dchi2, ndf, dw1) ! add total contribution
                     nrej(3)=nrej(3)+1      ! count cases with large chi^2
                     GO TO 90
                 END IF
@@ -4971,8 +4963,8 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
   
         IF(lhuber > 1.AND.dwcut /= 0.0.AND.resing > dwcut) THEN
             !         add to FVALUE
-            dchi2=summ                 ! total contribution
-            dchi2s=dchi2s+dchi2*dw1    ! add total contribution
+            dchi2=summ                             ! total contribution
+            CALL addsums(iproc+1, dchi2, ndf, dw1) ! add total contribution
             nrej(3)=nrej(3)+1      ! count cases with large chi^2
             !          WRITE(*,*) 'Downweight fraction cut ',RESING,DWCUT,SUMM
             IF(lprnt) THEN
@@ -4996,6 +4988,7 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
         !      update of global matrix and vector according to the "Millepede"
         !      principle, from the global/local information
     
+        summ=0.0_mpd
         DO ieq=1,neq! loop over measurements
             ja=localEquations(1,ioffq+ieq)
             jb=localEquations(2,ioffq+ieq)
@@ -5012,7 +5005,8 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                     dchi2=2.0*chuber*(resid/rerr-0.5*chuber) ! modified contribution
                 END IF
             END IF
-            dchi2s=dchi2s+dchi2*dw1    ! add to total objective function
+            ! sum up
+            summ=summ+dchi2
     
             !         global-global matrix contribution: add directly to gg-matrix
     
@@ -5056,6 +5050,8 @@ SUBROUTINE loopbf(nrej,ndfs,sndf,dchi2s, numfil,naccf,chi2f,ndff)
                 END IF
             END DO
         END DO
+        ! add to total objective function
+        CALL addsums(iproc+1, summ, ndf, dw1)
   
         !      ----- final matrix update ----------------------------------------
         !      update global matrices and vectors
@@ -8133,12 +8129,12 @@ SUBROUTINE loop2
                 CALL pbsbits(globalAllIndexGroups,ipdbsz(i),nnzero,nblock,vecBlockCounts)
                 nbwrds=2*INT(nblock,mpl)*INT(ipdbsz(i)*ipdbsz(i)+1,mpl) ! number of words needed
                 IF ((i == 1).OR.(nbwrds < mbwrds)) THEN
-                   matbsz=ipdbsz(i)
-                   mbwrds=nbwrds
-                   csr3RowOffsets(1)=1
-                   DO k=1,npdblk
-                       csr3RowOffsets(k+1)=csr3RowOffsets(k)+vecBlockCounts(k)
-                   END DO
+                    matbsz=ipdbsz(i)
+                    mbwrds=nbwrds
+                    csr3RowOffsets(1)=1
+                    DO k=1,npdblk
+                        csr3RowOffsets(k+1)=csr3RowOffsets(k)+vecBlockCounts(k)
+                    END DO
                 END IF
                 CALL mpdealloc(vecBlockCounts)
             END DO
@@ -9670,7 +9666,7 @@ SUBROUTINE mspardiso
         ENDIF
         IF (mtype < 0) THEN
             IF (iparm(14) > 0) &
-            WRITE(lun,*) 'Number of perturbed pivots     = ',iparm(14)
+                WRITE(lun,*) 'Number of perturbed pivots     = ',iparm(14)
             WRITE(lun,*) 'Number of positive eigenvalues = ',iparm(22)-nfill
             WRITE(lun,*) 'Number of negative eigenvalues = ',iparm(23)
         ELSE IF (iparm(30) > 0) THEN
@@ -13260,41 +13256,61 @@ END SUBROUTINE chkmat
 
 !> Accurate summation.
 !!
-!! \param[in]   add  summand
-
-SUBROUTINE addsum(add)
-    USE mpmod
-
-    IMPLICIT NONE
-    REAL(mpd):: add
-    INTEGER(mpi) ::nadd
-    !     ...
-    nadd=INT(add,mpi)                ! convert to integer
-    accurateNsum=accurateNsum+nadd               ! sum integer
-    accurateDsum=accurateDsum+(add-REAL(nadd,mpd)) ! sum remainder
-    IF(accurateDsum > 16.0_mpd) THEN       ! + - 16
-        accurateDsum=accurateDsum-16.0_mpd
-        accurateNsum=accurateNsum+16
-    END IF
-    DO WHILE(accurateNsum > nexp20)        ! if > 2^20: + - 2^20
-        accurateNexp=accurateNexp+1
-        accurateNsum=accurateNsum-nexp20
-    END DO
-    RETURN
-END SUBROUTINE addsum
-
-!> Get accurate sum.
+!! Sum up Chi2 (integer part in integer, fractional part in double variable)
+!! and (weighted) NDF (per thread)
 !!
-!! \param[out]   asum   accurate sum
+!! \param[in]  ithrd  thread index (1..MTHRD)
+!! \param[in]  chi2   summand
+!! \param[in]  ndf    summand
+!! \param[in]  dw     weight (from binary file)
 
-SUBROUTINE getsum(asum)
+SUBROUTINE addsums(ithrd, chi2, ndf, dw)
     USE mpmod
 
     IMPLICIT NONE
-    REAL(mpd), INTENT(OUT) ::asum
-    asum=(accurateDsum+REAL(accurateNsum,mpd))+REAL(accurateNexp,mpd)*REAL(nexp20,mpd)
-    accurateDsum=0.0_mpd
-    accurateNsum=0
-    accurateNexp=0
+    REAL(mpd), INTENT(IN) :: chi2
+    INTEGER(mpi), INTENT(IN) :: ithrd
+    INTEGER(mpi), INTENT(IN) :: ndf
+    REAL(mpd), INTENT(IN) :: dw
+
+    INTEGER(mpl) ::nadd
+    REAL(mpd) ::add
+    !     ...
+    add=chi2*dw              ! apply (file) weight
+    nadd=INT(add,mpl)        ! convert to integer
+    globalChi2SumI(ithrd)=globalChi2SumI(ithrd)+nadd                 ! sum integer
+    globalChi2SumD(ithrd)=globalChi2SumD(ithrd)+(add-REAL(nadd,mpd)) ! sum remainder
+    IF(globalChi2SumD(ithrd) > 16.0_mpd) THEN       ! + - 16
+        globalChi2SumD(ithrd)=globalChi2SumD(ithrd)-16.0_mpd
+        globalChi2SumI(ithrd)=globalChi2SumI(ithrd)+16_mpl
+    END IF
+    globalNdfSum(ithrd)=globalNdfSum(ithrd)+INT(ndf,mpl)
+    globalNdfSumW(ithrd)=globalNdfSumW(ithrd)+REAL(ndf,mpd)*dw
     RETURN
-END SUBROUTINE getsum
+END SUBROUTINE addsums
+
+!> Get accurate sums.
+!!
+!! Integrated over threads.
+!!
+!! \param[out]  chi2  (accurate) chi2 sum
+!! \param[out]  ndf   ndf sum
+!! \param[out]  wndf  weighted ndf sum
+
+SUBROUTINE getsums(chi2, ndf, wndf)
+    USE mpmod
+
+    IMPLICIT NONE
+    REAL(mpd), INTENT(OUT) ::chi2
+    INTEGER(mpl), INTENT(OUT) ::ndf
+    REAL(mpd), INTENT(OUT) ::wndf
+    !     ...
+    chi2=sum(globalChi2SumD)+REAL(sum(globalChi2SumI),mpd)
+    ndf=sum(globalNdfSum)
+    wndf=sum(globalNdfSumW)
+    globalChi2SumD=0.0_mpd
+    globalChi2SumI=0_mpl
+    globalNdfSum=0_mpl
+    globalNdfSumW=0.0_mpd
+    RETURN
+END SUBROUTINE getsums

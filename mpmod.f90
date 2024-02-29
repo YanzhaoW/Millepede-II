@@ -4,7 +4,7 @@
 !! \author Claus Kleinwort, DESY, 2012 (Claus.Kleinwort@desy.de)
 !!
 !! \copyright
-!! Copyright (c) 2012 - 2023 Deutsches Elektronen-Synchroton,
+!! Copyright (c) 2012 - 2024 Deutsches Elektronen-Synchroton,
 !! Member of the Helmholtz Association, (DESY), HAMBURG, GERMANY \n\n
 !! This library is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU Library General Public License as
@@ -153,7 +153,7 @@ MODULE mpmod
     REAL(mps)    :: stepl !< step length (line search)
     CHARACTER (LEN=74) :: textl !< name of current MP 'module' (step)
     LOGICAL :: newite !< flag for new iteration
-    INTEGER(mpi) :: ndfsum !< sum(ndf)
+    INTEGER(mpl) :: ndfsum !< sum(ndf)
     INTEGER(mpi) :: iitera !< MINRES iterations
     INTEGER(mpi) :: istopa !< MINRES istop (convergence)
     INTEGER(mpi) :: lsinfo !< line search: returned information
@@ -186,12 +186,7 @@ MODULE mpmod
     INTEGER(mpi) :: skippedRecords    !< number of skipped records (buffer too small)
     INTEGER(mpi) :: minRecordsInBlock !< min. records in block
     INTEGER(mpi) :: maxRecordsInBlock !< max. records in block
-    ! accurate sumation
-    INTEGER(mpi), PARAMETER::nexp20=1048576 ! 2**20
-    REAL(mpd)::accurateDsum=0.0_mpd !< fractional part of sum
-    INTEGER(mpi)::accurateNsum=0 !< sum mod 2**20
-    INTEGER(mpi)::accurateNexp=0 !< sum  /  2**20
-    INTEGER(mpi) :: lenGlobalVec !< length of global vector 'b' (A*x=b)
+    INTEGER(mpi) :: lenGlobalVec      !< length of global vector 'b' (A*x=b)
     ! dynamic arrays
     !======================================================
     ! global parameters
@@ -218,6 +213,11 @@ MODULE mpmod
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: indPreCond !< preconditioner pointer array
     INTEGER(mpi), DIMENSION(:), ALLOCATABLE :: blockPreCond !< preconditioner (constraint) blocks
     INTEGER(mpl), DIMENSION(:), ALLOCATABLE :: offPreCond !< preconditioner (block matrix) offsets
+    ! accurate sumation (per thread)
+    REAL(mpd), DIMENSION(:), ALLOCATABLE :: globalChi2SumD    !< fractional part of Chi2 sum
+    INTEGER(mpl), DIMENSION(:), ALLOCATABLE :: globalChi2SumI !< integer part of Chi2 sum
+    INTEGER(mpl), DIMENSION(:), ALLOCATABLE :: globalNdfSum   !< NDF sum
+    REAL(mpd), DIMENSION(:), ALLOCATABLE :: globalNdfSumW     !< weighted NDF sum
     ! auxiliary vectors
     REAL(mpd), DIMENSION(:), ALLOCATABLE :: workspaceD !< (general) workspace (D)
     REAL(mpd), DIMENSION(:), ALLOCATABLE :: workspaceDiag !< diagonal of global matrix (for global corr.)
