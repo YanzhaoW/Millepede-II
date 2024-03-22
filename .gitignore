@@ -13,3 +13,6 @@ bin
 
 # ignore editor backups
 *.bck
+
+# ignore cmake build
+build
