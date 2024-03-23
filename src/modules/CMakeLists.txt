@@ -21,5 +21,14 @@ set(MILLEPEDE_modules
     vertpr.f90)
 
 add_library(millepede STATIC ${MILLEPEDE_modules})
-target_include_directories(millepede PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-set_target_properties(millepede PROPERTIES Fortran_MODULE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+if(OpenMP_Fortran_FOUND)
+  target_link_libraries(millepede PUBLIC OpenMP::OpenMP_Fortran)
+endif()
+
+if(BLAS_FOUND)
+  target_link_libraries(millepede PUBLIC BLAS::BLAS)
+  target_compile_definitions(millepede PUBLIC -DLAPACK64=${BLA_VENDOR})
+endif()
+
+target_include_directories(millepede PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
