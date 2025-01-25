@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.25)
 
 project(Millepede2 LANGUAGES Fortran CXX C)
 
+include(GNUInstallDirs)
+
+set(LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}/lib")
+set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}/bin")
+
 option(SUPPORT_READ_C "Support read CFiles" ON)
 option(SUPPORT_ZLIB "Support zlib" ON)
 option(SUPPORT_OPENMP "Support OpenMP" ON)
