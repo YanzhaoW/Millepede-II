@@ -13,7 +13,7 @@ option(SUPPORT_OPENMP "Support OpenMP" ON)
 option(SUPPORT_LAPACK64 "Support LAPACK64" OFF)
 
 set(CMAKE_Fortran_FLAGS
-    "${CMAKE_Fortran_FLAGS} -Wall -fautomatic -fno-backslash -O3 -cpp")
+    "${CMAKE_Fortran_FLAGS} -w -fautomatic -fno-backslash -O3 -cpp")
 set(CMAKE_C_FLAGS
     "${CMAKE_C_FLAGS} -Wall -Wno-unused-function -O3 -Df2cFortran")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
