@@ -99,6 +99,8 @@ This class can be used to read the result file from the pede program, which is n
 Public interfaces:
 
 ```cpp
+namespace millepede
+{
     class ResultReader
     {
       public:
@@ -109,6 +111,7 @@ Public interfaces:
         void print();
         [[nodiscard]] auto get_pars() const -> const std::unordered_map<int, ParResultEntry>&;
     };
+}
 ```
 
 #### Constructor
@@ -169,6 +172,8 @@ where
 Public interfaces:
 
 ```cpp
+namespace millepede
+{
     class SteerWriter
     {
       public:
@@ -186,6 +191,7 @@ Public interfaces:
 
         void write();
     };
+}
 ```
 
 #### Constructor
