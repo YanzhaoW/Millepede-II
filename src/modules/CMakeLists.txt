@@ -32,3 +32,5 @@ if(BLAS_FOUND)
 endif()
 
 target_include_directories(millepede PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+
+add_library(millepede::core ALIAS millepede)
