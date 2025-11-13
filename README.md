@@ -62,13 +62,16 @@ void mille(const MilleDataPoint& data_point);
 The `mille` member function adds the data point `data_point` to the current entry. Data point has the type `MilleDataPoint` and has the following member variables:
 
 ```cpp
-struct MilleDataPoint
+namespace millepede
 {
-    std::vector<float> locals;                  // local derivatives
-    std::vector<std::pair<int, float>> globals; // global label and derivatives pair
-    float measurement = 0.;                     // measurement corresponding to the error value
-    float sigma = 1.;                           // error value
-};
+    struct MilleDataPoint
+    {
+        std::vector<float> locals;                  // local derivatives
+        std::vector<std::pair<int, float>> globals; // global label and derivatives pair
+        float measurement = 0.;                     // measurement corresponding to the error value
+        float sigma = 1.;                           // error value
+    };
+}
 ```
 
 - `locals`: a vector of first-order derivatives of local variables
@@ -147,6 +150,8 @@ This function triggers the reading the parameter from the file.
 This function returns a constant reference to the parameters that has been read from the file. The parameters are stored in a hash table with the type `std::unordered_map<int, ParResultEntry>`. The type of the value is:
 
 ```cpp
+namespace millepede
+{
     struct ParResultEntry
     {
         int par_id = 0;
@@ -155,6 +160,7 @@ This function returns a constant reference to the parameters that has been read 
         float value_diff = 0.F;
         float error = 0.F;
     };
+}
 ```
 
 where
@@ -224,16 +230,19 @@ void add_method(PedeMethod method, const std::pair<float, float>& values);
 This sets the fitting algorithm for the pede program. The method has the enum type `PedeMethod`, which is defined as:
 
 ```cpp
-enum class PedeMethod : uint8_t
+namespace millepede
 {
-    inversion,
-    diagonalization,
-    fullGORES,
-    sparseGMRES,
-    cholesky,
-    bandchooseby,
-    HIP
-};
+    enum class PedeMethod : uint8_t
+    {
+        inversion,
+        diagonalization,
+        fullGORES,
+        sparseGMRES,
+        cholesky,
+        bandchooseby,
+        HIP
+    };
+}
 ```
 
 The values from each method can be looked up in the millepede-II manual page.
