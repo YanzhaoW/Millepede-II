@@ -51,6 +51,7 @@ namespace millepede
         void add_method(PedeMethod method, const std::pair<float, float>& values);
         void add_other_options(std::vector<std::string> options);
         void write();
+
       private:
         std::map<PedeMethod, std::pair<float, float>> methods_;
         std::string filepath_ = DEFAULT_STEER_FILENAME;
@@ -95,7 +96,10 @@ class std::formatter<millepede::PedeMethod>
                     return "bandchooseby";
                 case HIP:
                     return "HIP";
+                default:
+                    return "invalid";
             }
+            return "invalid";
         }();
         return std::format_to(ctn.out(), "{}", str);
     }
