@@ -85,7 +85,7 @@ namespace millepede
         ofile << "Parameter\n";
         for (const auto& [par_id, values] : parameter_defaults_)
         {
-            ofile << std::format("{} {:.1f} {:.1f}\n", par_id, values.first, values.second);
+            ofile << std::format("{} {:.3f} {:.3f}\n", par_id, values.first, values.second);
         }
     }
 
