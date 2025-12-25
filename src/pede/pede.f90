@@ -4397,6 +4397,9 @@ SUBROUTINE loopbf(nrej,numfil,naccf,chi2f,ndff)
     nprdbg=0
     iprdbg=-1
 
+    ! print *, "number of read buffers: ", numReadBuffer
+    ! print *, "read buffer data I size: ", SIZE(readBufferDataI)
+
     ! parallelize record loop
     ! private copy of NREJ,.. for each thread, combined at end, init with 0.
     !$OMP  PARALLEL DO &
@@ -4521,6 +4524,9 @@ SUBROUTINE loopbf(nrej,numfil,naccf,chi2f,ndff)
                     
         ist=readBufferPointer(ibuf)+1
         nst=readBufferDataI(readBufferPointer(ibuf))
+        ! print *, "starting looping over meas ..."
+        ! print *, "ist: ", ist
+        ! print *, "nst: ", nst
         DO ! loop over measurements
             CALL isjajb(nst,ist,ja,jb,jsp)
             IF(ja == 0) EXIT
@@ -4532,6 +4538,8 @@ SUBROUTINE loopbf(nrej,numfil,naccf,chi2f,ndff)
             !         subtract global ... from measured value
             DO j=1,ist-jb                 ! global parameter loop
                 itgbi=readBufferDataI(jb+j)            ! global parameter label
+                ! print *, "--- meas before: ", rmeas
+                ! print *, "--- sub: ", REAL(readBufferDataD(jb+j),mpd)*globalParameter(itgbi)
                 rmeas=rmeas-REAL(readBufferDataD(jb+j),mpd)*globalParameter(itgbi) ! subtract   !!! reversed
                 IF (icalcm == 1) THEN
                     ij=globalParLabelIndex(2,itgbi)         ! -> index of variable global parameter
@@ -4545,6 +4553,7 @@ SUBROUTINE loopbf(nrej,numfil,naccf,chi2f,ndff)
                     END IF
                 END IF
             END DO
+            ! print *, "--- meas after: ", rmeas
             IF(lprnt) THEN
                 IF (jb < ist) WRITE(1,102) neq,readBufferDataD(ja),rmeas,readBufferDataD(jb)
             END IF
@@ -4755,6 +4764,7 @@ SUBROUTINE loopbf(nrej,numfil,naccf,chi2f,ndff)
             ELSE
                 !      full inversion and solution
                 inv=2
+                ! print *, "nrank: ", nrank
                 CALL sqminv(clmat,blvec,nalc,nrank,scdiag,scflag)
             END IF
             !      check for NaNs
