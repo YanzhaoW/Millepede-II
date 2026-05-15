@@ -41,9 +41,8 @@ template <>
 class std::formatter<millepede::MilleDataPoint>
 {
   public:
-    static constexpr auto parse(format_parse_context& ctx) { return ctx.end(); }
-    template <typename FmtContent>
-    constexpr auto format(const millepede::MilleDataPoint& point, FmtContent& ctn) const
+    static constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+    static constexpr auto format(const millepede::MilleDataPoint& point, std::format_context& ctn)
     {
         return std::format_to(ctn.out(),
                               "measurement: {}, sigma: {}\nlocals: {}\nglobals: {}",
