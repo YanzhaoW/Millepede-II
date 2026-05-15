@@ -18,21 +18,22 @@ set(MILLEPEDE_modules
     mptest2.f90
     mptext.f90
     randoms.f90
-    vertpr.f90)
+    vertpr.f90
+)
 
-add_library(millepede STATIC ${MILLEPEDE_modules})
+add_library(millepede_core STATIC ${MILLEPEDE_modules})
 
 if(OpenMP_Fortran_FOUND)
-  target_link_libraries(millepede PUBLIC OpenMP::OpenMP_Fortran)
+    target_link_libraries(millepede_core PUBLIC OpenMP::OpenMP_Fortran)
 endif()
 
 if(BLAS_FOUND)
-  target_link_libraries(millepede PUBLIC BLAS::BLAS)
-  target_compile_definitions(millepede PUBLIC -DLAPACK64=${BLA_VENDOR})
+    target_link_libraries(millepede_core PUBLIC BLAS::BLAS)
+    target_compile_definitions(millepede_core PUBLIC -DLAPACK64=${BLA_VENDOR})
 endif()
 
-target_include_directories(millepede PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(millepede_core PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
-add_library(millepede::core ALIAS millepede)
+add_library(millepede::core ALIAS millepede_core)
 
-install(TARGETS millepede EXPORT millepede)
+# install(TARGETS millepede EXPORT millepede)

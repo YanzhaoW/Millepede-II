@@ -12,6 +12,7 @@ target_sources(
                 SteerWriter.hpp
     PRIVATE MilleWriter.cpp ParResultReader.cpp SteerWriter.cpp
 )
+target_compile_features(mille PUBLIC cxx_std_23)
 
 add_library(mille_c STATIC)
 target_sources(
@@ -22,7 +23,7 @@ target_sources(
             BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
     PRIVATE Mille.cc readc.c mille.f90
 )
-target_link_libraries(mille_c PUBLIC millepede PRIVATE ZLIB::ZLIB)
+target_link_libraries(mille_c PRIVATE ZLIB::ZLIB millepede_core)
 if(ZLIB_FOUND)
     target_compile_definitions(mille_c PUBLIC -DUSE_ZLIB)
 endif()

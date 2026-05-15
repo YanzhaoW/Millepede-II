@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cstdint>
+#include <format>
 #include <fstream>
 #include <map>
 #include <string>
